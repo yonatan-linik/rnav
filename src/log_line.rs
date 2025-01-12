@@ -1,5 +1,4 @@
 use chrono::{DateTime, FixedOffset};
-use ratatui;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LogLine<'a> {

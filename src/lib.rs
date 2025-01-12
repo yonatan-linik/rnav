@@ -1,3 +1,3 @@
-pub mod logline;
+pub mod log_line;
 
-pub use logline::LogLine;
+pub use log_line::LogLine;
