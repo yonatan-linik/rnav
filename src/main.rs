@@ -1,9 +1,10 @@
 mod app_state;
+mod error;
 mod log_line;
 
 use app_state::AppState;
-use color_eyre::Result;
 use crossterm::event;
+use error::Result;
 use ratatui::{
     layout::{Constraint, Layout, Margin},
     text::Text,
@@ -56,12 +57,13 @@ fn run(mut terminal: DefaultTerminal, args: Args) -> Result<()> {
 }
 
 fn render(frame: &mut Frame, state: &mut AppState) {
-    use Constraint::{Fill, Length, Min};
+    use Constraint::{Length, Min};
 
-    let vertical = Layout::vertical([Min(3), Length(3)]);
+    let vertical = Layout::vertical([
+        Min(3),
+        Length(2 + state.state_bar_text_number_of_lines() as u16),
+    ]);
     let [main_area, status_area] = vertical.areas(frame.area());
-    let horizontal = Layout::horizontal([Fill(1); 1]);
-    let [left_area] = horizontal.areas(main_area);
 
     frame.render_widget(
         Block::bordered().title("Status Bar").title_bottom(format!(
@@ -70,18 +72,14 @@ fn render(frame: &mut Frame, state: &mut AppState) {
         )),
         status_area,
     );
+    let status_bar_styled = state.status_bar_text();
     frame.render_widget(
-        Text::styled(
-            state.status_bar_text(),
-            ratatui::style::Style::default()
-                .fg(ratatui::style::Color::Rgb(255, 255, 255))
-                .add_modifier(ratatui::style::Modifier::BOLD),
-        ),
+        Text::styled(status_bar_styled.content(), *status_bar_styled.style()),
         status_area.inner(Margin::new(1, 1)),
     );
-    frame.render_widget(Block::bordered().title(state.main_area_title()), left_area);
+    frame.render_widget(Block::bordered().title(state.main_area_title()), main_area);
     frame.render_widget(
         Text::from_iter(state.lines_iter()),
-        left_area.inner(Margin::new(1, 1)),
+        main_area.inner(Margin::new(1, 1)),
     );
 }
