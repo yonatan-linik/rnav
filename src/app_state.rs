@@ -1,11 +1,11 @@
 use std::iter::once;
 
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEventKind};
-use crossterm::style::{StyledContent, Stylize};
 use rand::Rng as _;
-use ratatui::style::Color;
-use ratatui::text::{Line, Span};
+use ratatui::style::{Color, Style, Stylize};
+use ratatui::text::{Line, Span, Text};
 
+use crate::command::Command;
 use crate::error::{Error, Result};
 use crate::log_line::LogLine;
 
@@ -22,6 +22,7 @@ pub struct AppState<'a> {
     filter_outs: Vec<regex::Regex>,
     command_mode: bool,
     current_command: String,
+    command_completions: Vec<&'static str>,
     present_error: String,
     highlights: Vec<(regex::Regex, Color)>,
 }
@@ -47,6 +48,7 @@ impl<'a> AppState<'a> {
             filter_outs: vec![],
             command_mode: false,
             current_command: String::new(),
+            command_completions: vec![],
             present_error: String::new(),
             highlights: vec![],
         }
@@ -56,26 +58,30 @@ impl<'a> AppState<'a> {
         self.filter_ins.len() + self.filter_outs.len()
     }
 
-    pub fn status_bar_text(&self) -> StyledContent<String> {
+    pub fn status_bar_text(&self) -> Text<'a> {
         if !self.present_error.is_empty() {
-            return self.present_error.clone().red();
+            return Text::from_iter(self.present_error.lines().map(|l| l.to_string().red()));
         }
 
-        if self.command_mode {
-            format!(":{}", self.current_command)
-        } else {
-            String::new()
+        if !self.command_mode {
+            return Text::default();
         }
-        .with(crossterm::style::Color::Rgb {
-            r: 255,
-            g: 255,
-            b: 255,
-        })
-        .bold()
+
+        let text = format!(":{}", self.current_command);
+        Text::styled(text, Style::new().fg(Color::White).bold())
+    }
+
+    pub fn status_bar_completions(&self) -> Line<'_> {
+        Line::from_iter(self.command_completions.iter().flat_map(|c| {
+            [
+                Span::styled(*c, ratatui::style::Style::new().white()),
+                Span::raw(" "),
+            ]
+        }))
     }
 
     pub fn state_bar_text_number_of_lines(&self) -> usize {
-        self.status_bar_text().content().lines().count()
+        self.status_bar_text().lines.len() + self.status_bar_completions().iter().count().min(1)
     }
 
     pub fn main_area_title(&self) -> &str {
@@ -151,11 +157,15 @@ impl<'a> AppState<'a> {
             .filter(|l| self.apply_filter_ins(l))
             .filter(|l| self.apply_filter_outs(l));
 
-        self.apply_highlights(filtered_lines)
+        let highlighted_lines = self.apply_highlights(filtered_lines);
+
+        highlighted_lines
+        // highlighted_lines
+        //     .into_iter()
+        //     .chain(once(Line::from_iter(command_completions_lines)))
     }
 
     fn handle_command(&mut self) -> Result<()> {
-        const COMMANDS: &[&str] = &["filter-in", "filter-out", "highlight"];
         let mut curr_cmd = String::new();
         std::mem::swap(&mut curr_cmd, &mut self.current_command);
         let (command, arguments) = curr_cmd
@@ -163,30 +173,38 @@ impl<'a> AppState<'a> {
             .split_once(|c: char| c.is_whitespace())
             .unwrap_or((curr_cmd.trim(), ""));
 
-        if COMMANDS.contains(&command) && arguments.is_empty() {
+        let command: Command = command.parse()?;
+
+        // Currently all commands need arguments
+        if arguments.is_empty() {
             return Err(Error::NoArgumentsGivenToCommand);
         }
 
         match command {
-            "filter-in" => {
+            Command::FilterIn => {
                 let r = regex::Regex::new(arguments)?;
                 self.filter_ins.push(r);
             }
-            "filter-out" => {
+            Command::FilterOut => {
                 let r = regex::Regex::new(arguments)?;
                 self.filter_outs.push(r);
             }
-            "highlight" => {
+            Command::Highlight => {
                 let r = regex::Regex::new(arguments)?;
                 self.highlights.push((
                     r,
                     Color::from_u32(rand::thread_rng().gen_range(255..=0x00FF_FFFF)),
                 ));
             }
-            _ => return Err(Error::UnknownCommand(command.to_string())),
         }
 
         Ok(())
+    }
+
+    fn exit_command_mode(&mut self) {
+        self.command_mode = false;
+        self.current_command.clear();
+        self.command_completions.clear();
     }
 
     pub fn read_event(&mut self, event: Event) -> AppAction {
@@ -194,7 +212,9 @@ impl<'a> AppState<'a> {
             return AppAction::NoAction;
         }
 
-        self.present_error = String::new();
+        self.present_error.clear();
+        self.command_completions.clear();
+
         if self.command_mode {
             match event {
                 Event::Key(KeyEvent {
@@ -231,8 +251,20 @@ impl<'a> AppState<'a> {
                 Event::Key(KeyEvent {
                     code: KeyCode::Esc, ..
                 }) => {
-                    self.command_mode = false;
-                    self.current_command.clear();
+                    self.exit_command_mode();
+                }
+                Event::Key(KeyEvent {
+                    code: KeyCode::Tab,
+                    modifiers: KeyModifiers::NONE,
+                    ..
+                }) => {
+                    let (longest_common_prefix, completions) =
+                        Command::auto_complete(&self.current_command);
+
+                    if let Some(prefix) = longest_common_prefix {
+                        self.current_command = prefix;
+                    }
+                    self.command_completions = completions;
                 }
                 _ => (),
             }

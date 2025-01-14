@@ -1,4 +1,5 @@
 mod app_state;
+mod command;
 mod error;
 mod log_line;
 
@@ -72,11 +73,11 @@ fn render(frame: &mut Frame, state: &mut AppState) {
         )),
         status_area,
     );
-    let status_bar_styled = state.status_bar_text();
-    frame.render_widget(
-        Text::styled(status_bar_styled.content(), *status_bar_styled.style()),
-        status_area.inner(Margin::new(1, 1)),
-    );
+
+    let mut status_bar_styled = state.status_bar_text();
+    status_bar_styled.push_line(state.status_bar_completions());
+
+    frame.render_widget(status_bar_styled, status_area.inner(Margin::new(1, 1)));
     frame.render_widget(Block::bordered().title(state.main_area_title()), main_area);
     frame.render_widget(
         Text::from_iter(state.lines_iter()),
