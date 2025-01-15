@@ -4,6 +4,7 @@ use chrono::{DateTime, FixedOffset};
 pub struct LogLine<'a> {
     pub time: DateTime<FixedOffset>,
     pub log: &'a str,
+    pub marked: bool,
 }
 
 impl<'a> LogLine<'a> {
@@ -18,9 +19,9 @@ impl<'a> LogLine<'a> {
     /// # use chrono::DateTime;
     /// # use chrono::TimeZone;
     /// // RFC3339 format
-    /// assert_eq!(LogLine::new("2021-08-01T12:00:00Z INFO Hello, world!"), Some(LogLine { time: FixedOffset::east_opt(0).unwrap().with_ymd_and_hms(2021, 8, 1, 12, 0, 0).unwrap(), log: "2021-08-01T12:00:00Z INFO Hello, world!" }));
+    /// assert_eq!(LogLine::new("2021-08-01T12:00:00Z INFO Hello, world!"), Some(LogLine { time: FixedOffset::east_opt(0).unwrap().with_ymd_and_hms(2021, 8, 1, 12, 0, 0).unwrap(), log: "2021-08-01T12:00:00Z INFO Hello, world!", marked: false }));
     /// // RFC2822 format
-    /// assert_eq!(LogLine::new("Wed, 18 Feb 2015 23:16:09 GMT Log contents"), Some(LogLine { time: FixedOffset::east_opt(0).unwrap().with_ymd_and_hms(2015, 2, 18, 23, 16, 9).unwrap(), log: "Wed, 18 Feb 2015 23:16:09 GMT Log contents"}));
+    /// assert_eq!(LogLine::new("Wed, 18 Feb 2015 23:16:09 GMT Log contents"), Some(LogLine { time: FixedOffset::east_opt(0).unwrap().with_ymd_and_hms(2015, 2, 18, 23, 16, 9).unwrap(), log: "Wed, 18 Feb 2015 23:16:09 GMT Log contents", marked: false }));
     /// // Unknown format
     /// assert_eq!(LogLine::new("18/Mar/2003:08:05:30 +0200 Unknown format"), None);
     /// ```
@@ -44,7 +45,11 @@ impl<'a> LogLine<'a> {
             return None;
         };
 
-        Some(LogLine { time, log })
+        Some(LogLine {
+            time,
+            log,
+            marked: false,
+        })
     }
 }
 

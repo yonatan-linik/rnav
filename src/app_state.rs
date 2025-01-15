@@ -2,7 +2,7 @@ use std::iter::once;
 
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEventKind};
 use rand::Rng as _;
-use ratatui::style::{Color, Style, Stylize};
+use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::{Line, Span, Text};
 
 use crate::command::Command;
@@ -35,6 +35,7 @@ impl<'a> AppState<'a> {
                 LogLine::new(l).unwrap_or_else(|| LogLine {
                     time: chrono::DateTime::<chrono::Utc>::MAX_UTC.fixed_offset(),
                     log: l,
+                    marked: false,
                 })
             })
             .collect();
@@ -67,17 +68,22 @@ impl<'a> AppState<'a> {
             return Text::default();
         }
 
-        let text = format!(":{}", self.current_command);
-        Text::styled(text, Style::new().fg(Color::White).bold())
+        let mut text = Text::styled(
+            format!(":{}", self.current_command),
+            (Color::White, Modifier::BOLD),
+        );
+
+        text.push_span(Span::styled("█", Modifier::SLOW_BLINK));
+
+        text
     }
 
     pub fn status_bar_completions(&self) -> Line<'_> {
-        Line::from_iter(self.command_completions.iter().flat_map(|c| {
-            [
-                Span::styled(*c, ratatui::style::Style::new().white()),
-                Span::raw(" "),
-            ]
-        }))
+        Line::from_iter(
+            self.command_completions
+                .iter()
+                .flat_map(|c| [Span::styled(*c, Color::White), Span::raw(" ")]),
+        )
     }
 
     pub fn state_bar_text_number_of_lines(&self) -> usize {
@@ -99,26 +105,26 @@ impl<'a> AppState<'a> {
     fn split_keep<'b>(
         r: &regex::Regex,
         text: &'b str,
-        base_color: Color,
-        color: Color,
+        base_style: Style,
+        style: Style,
     ) -> impl IntoIterator<Item = Span<'b>> {
         let mut result = Vec::new();
         let mut last = 0;
         for m in r.find_iter(text) {
             if last != m.start() {
-                result.push(Span::styled(&text[last..m.start()], base_color));
+                result.push(Span::styled(&text[last..m.start()], base_style));
             }
-            result.push(Span::styled(m.as_str(), color));
+            result.push(Span::styled(m.as_str(), style));
             last = m.end();
         }
         if last < text.len() {
-            result.push(Span::styled(&text[last..], base_color));
+            result.push(Span::styled(&text[last..], base_style));
         }
         result
     }
 
-    fn apply_highlights_to_line(&'a self, log_line: LogLine<'a>) -> Line<'a> {
-        let mut spans: Box<dyn Iterator<Item = Span<'a>>> = Box::new(once(Span::raw(log_line.log)));
+    fn apply_highlights_to_line(&'a self, log_line: Span<'a>) -> Line<'a> {
+        let mut spans: Box<dyn Iterator<Item = Span<'a>>> = Box::new(once(log_line));
 
         for (regex, color) in &self.highlights {
             let new_spans: Box<dyn Iterator<Item = Span<'a>>> = Box::new(
@@ -129,7 +135,7 @@ impl<'a> AppState<'a> {
                             std::borrow::Cow::Owned(_) => unreachable!("This can never be owned, it is always borrowed from the original log text, and we don't modify it"),
                         };
 
-                        AppState::split_keep(regex, b, s.style.fg.unwrap_or_default(), *color)
+                        AppState::split_keep(regex, b, s.style, s.style.fg(*color))
                     }),
             );
 
@@ -141,28 +147,43 @@ impl<'a> AppState<'a> {
 
     fn apply_highlights(
         &'a self,
-        log_lines: impl IntoIterator<Item = LogLine<'a>> + 'a,
+        log_lines: impl IntoIterator<Item = Span<'a>> + 'a,
     ) -> impl IntoIterator<Item = Line<'a>> + 'a {
         log_lines
             .into_iter()
             .map(|l| self.apply_highlights_to_line(l))
     }
 
-    pub fn lines_iter(&'a self) -> impl IntoIterator<Item = Line<'a>> + 'a {
-        let filtered_lines = self
-            .lines
+    fn filter_lines_iter(&'a self) -> impl IntoIterator<Item = (usize, &LogLine<'a>)> {
+        self.lines
             .iter()
-            .copied()
+            .enumerate()
             .skip(self.offset)
-            .filter(|l| self.apply_filter_ins(l))
-            .filter(|l| self.apply_filter_outs(l));
+            .filter(|(_, l)| self.apply_filter_ins(l))
+            .filter(|(_, l)| self.apply_filter_outs(l))
+    }
 
-        let highlighted_lines = self.apply_highlights(filtered_lines);
+    fn apply_marks(
+        &'a self,
+        log_lines: impl IntoIterator<Item = LogLine<'a>> + 'a,
+    ) -> impl IntoIterator<Item = Span<'a>> + 'a {
+        log_lines.into_iter().map(|l| {
+            if l.marked {
+                Span::styled(l.log, Style::new().bg(Color::White).fg(Color::Black))
+            } else {
+                Span::raw(l.log)
+            }
+        })
+    }
+
+    pub fn lines_iter(&'a self) -> impl IntoIterator<Item = Line<'a>> + 'a {
+        let filtered_lines = self.filter_lines_iter().into_iter().map(|(_, l)| *l);
+
+        let marked_lines = self.apply_marks(filtered_lines);
+
+        let highlighted_lines = self.apply_highlights(marked_lines);
 
         highlighted_lines
-        // highlighted_lines
-        //     .into_iter()
-        //     .chain(once(Line::from_iter(command_completions_lines)))
     }
 
     fn handle_command(&mut self) -> Result<()> {
@@ -264,7 +285,10 @@ impl<'a> AppState<'a> {
                     if let Some(prefix) = longest_common_prefix {
                         self.current_command = prefix;
                     }
-                    self.command_completions = completions;
+
+                    if completions.len() > 1 {
+                        self.command_completions = completions;
+                    }
                 }
                 _ => (),
             }
@@ -309,6 +333,9 @@ impl<'a> AppState<'a> {
                             self.filter_outs.clear();
                             self.highlights.clear();
                         }
+                        KeyCode::Char('m') => {
+                            self.flip_mark_of_top_log_line();
+                        }
                         _ => (),
                     }
                 }
@@ -326,5 +353,13 @@ impl<'a> AppState<'a> {
         }
 
         AppAction::NoAction
+    }
+
+    fn flip_mark_of_top_log_line(&mut self) {
+        let Some((i, _)) = self.filter_lines_iter().into_iter().next() else {
+            return;
+        };
+
+        self.lines[i].marked = !self.lines[i].marked;
     }
 }
