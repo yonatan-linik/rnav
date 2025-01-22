@@ -1,11 +1,13 @@
 mod app_state;
 mod command;
 mod error;
+mod log_file;
 mod log_line;
 
 use app_state::AppState;
 use crossterm::event;
 use error::Result;
+use log_file::LogFile;
 use ratatui::{
     layout::{Constraint, Layout, Margin},
     text::Text,
@@ -37,16 +39,19 @@ fn main() -> Result<()> {
 }
 
 fn run(mut terminal: DefaultTerminal, args: Args) -> Result<()> {
-    let first_file_name = args
+    let files: Vec<_> = args
         .file_names
-        .first()
-        .expect("First file name must exist")
-        .as_str();
+        .iter()
+        .map(|n| {
+            LogFile::new_with_random_color(
+                n.as_str().into(),
+                String::from_utf8(std::fs::read(n).expect("Can read file"))
+                    .expect("File is a valid utf-8 text file"),
+            )
+        })
+        .collect();
 
-    let text = String::from_utf8(std::fs::read(first_file_name).expect("Can read file"))
-        .expect("File is a valid utf-8 text file");
-
-    let mut state = AppState::new(&text, first_file_name);
+    let mut state = AppState::new(&files);
     loop {
         terminal.draw(|f| render(f, &mut state))?;
         let event = event::read()?;

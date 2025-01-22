@@ -1,7 +1,10 @@
 use chrono::{DateTime, FixedOffset};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+use crate::log_file::LogFile;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LogLine<'a> {
+    pub src_file: &'a LogFile,
     pub time: DateTime<FixedOffset>,
     pub log: &'a str,
     pub marked: bool,
@@ -25,7 +28,7 @@ impl<'a> LogLine<'a> {
     /// // Unknown format
     /// assert_eq!(LogLine::new("18/Mar/2003:08:05:30 +0200 Unknown format"), None);
     /// ```
-    pub fn new<S: AsRef<str> + ?Sized>(line: &'a S) -> Option<Self> {
+    pub fn new<S: AsRef<str> + ?Sized>(src_file: &'a LogFile, line: &'a S) -> Option<Self> {
         let log = line.as_ref();
         let end_of_rfc2822_time_index = log
             .find('+')
@@ -46,6 +49,7 @@ impl<'a> LogLine<'a> {
         };
 
         Some(LogLine {
+            src_file,
             time,
             log,
             marked: false,

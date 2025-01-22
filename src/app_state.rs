@@ -1,12 +1,15 @@
 use std::iter::once;
+use std::sync::Arc;
 
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEventKind};
+use itertools::Itertools;
 use rand::Rng as _;
 use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::{Line, Span, Text};
 
 use crate::command::Command;
 use crate::error::{Error, Result};
+use crate::log_file::LogFile;
 use crate::log_line::LogLine;
 
 pub enum AppAction {
@@ -15,7 +18,8 @@ pub enum AppAction {
 }
 
 pub struct AppState<'a> {
-    file_name: String,
+    main_area_title: String,
+    file_names: Vec<Arc<str>>,
     lines: Vec<LogLine<'a>>,
     offset: usize,
     filter_ins: Vec<regex::Regex>,
@@ -25,24 +29,36 @@ pub struct AppState<'a> {
     command_completions: Vec<&'static str>,
     present_error: String,
     highlights: Vec<(regex::Regex, Color)>,
+    show_file_names: bool,
 }
 
 impl<'a> AppState<'a> {
-    pub fn new(text: &'a str, file_name: impl Into<String>) -> Self {
-        let mut lines: Vec<_> = text
-            .lines()
-            .map(|l| {
-                LogLine::new(l).unwrap_or_else(|| LogLine {
-                    time: chrono::DateTime::<chrono::Utc>::MAX_UTC.fixed_offset(),
-                    log: l,
-                    marked: false,
+    pub fn new(files: &'a [LogFile]) -> Self {
+        let mut lines: Vec<_> = files
+            .iter()
+            .flat_map(|src_file| {
+                src_file.contents.lines().map(|l| {
+                    LogLine::new(src_file, l).unwrap_or_else(|| LogLine {
+                        src_file,
+                        time: chrono::DateTime::<chrono::Utc>::MAX_UTC.fixed_offset(),
+                        log: l,
+                        marked: false,
+                    })
                 })
             })
             .collect();
         lines.sort_by(|a, b| a.time.cmp(&b.time));
 
+        let main_area_title = if files.len() == 1 {
+            files[0].name.to_string()
+        } else {
+            format!("Looking at {} log files", files.len())
+        };
+
+        let file_names = files.iter().map(|f| f.name.clone()).collect();
+
         Self {
-            file_name: file_name.into(),
+            main_area_title,
             lines,
             offset: 0,
             filter_ins: vec![],
@@ -52,6 +68,8 @@ impl<'a> AppState<'a> {
             command_completions: vec![],
             present_error: String::new(),
             highlights: vec![],
+            show_file_names: false,
+            file_names,
         }
     }
 
@@ -91,7 +109,7 @@ impl<'a> AppState<'a> {
     }
 
     pub fn main_area_title(&self) -> &str {
-        &self.file_name
+        &self.main_area_title
     }
 
     fn apply_filter_ins(&self, l: &LogLine) -> bool {
@@ -176,14 +194,59 @@ impl<'a> AppState<'a> {
         })
     }
 
+    fn filtered_lines_file_names(&'a self) -> impl IntoIterator<Item = Span<'a>> + 'a {
+        let lines = self
+            .filter_lines_iter()
+            .into_iter()
+            .map(|(_, l)| l.src_file.clone());
+
+        let max_file_name_length = self.file_names.iter().map(|n| n.len()).max().unwrap_or(0);
+
+        once(None)
+            .chain(lines.into_iter().map(Some))
+            .chain(once(None))
+            .tuple_windows()
+            .map(move |(prev, curr, next)| {
+                let curr = curr.expect("curr will always be Some()");
+                let sep = match (&prev, &next) {
+                    (None, None) => "[",
+                    (None, Some(n)) if curr.name == n.name => "┌",
+                    // If the next line isn't from the same file
+                    (None, _) => "[",
+                    // If the previous line isn't from the same file
+                    (Some(p), None) if curr.name == p.name => "└",
+                    (_, None) => "[",
+                    (Some(p), Some(n)) if curr.name == p.name && curr.name == n.name => "├",
+                    (Some(p), Some(n)) if curr.name == p.name && curr.name != n.name => "└",
+                    (Some(p), Some(n)) if curr.name != p.name && curr.name == n.name => "┌",
+                    // If both are different from current
+                    (Some(_), Some(_)) => "[",
+                };
+
+                if !self.show_file_names {
+                    Span::styled(sep, curr.color)
+                } else {
+                    Span::styled(
+                        format!("{:width$}{sep}", curr.name, width = max_file_name_length),
+                        curr.color,
+                    )
+                }
+            })
+    }
+
     pub fn lines_iter(&'a self) -> impl IntoIterator<Item = Line<'a>> + 'a {
-        let filtered_lines = self.filter_lines_iter().into_iter().map(|(_, l)| *l);
+        let filtered_lines = self.filter_lines_iter().into_iter().map(|(_, l)| l.clone());
 
         let marked_lines = self.apply_marks(filtered_lines);
 
         let highlighted_lines = self.apply_highlights(marked_lines);
 
-        highlighted_lines
+        let named_lines = self.filtered_lines_file_names();
+
+        named_lines
+            .into_iter()
+            .zip(highlighted_lines)
+            .map(|(f, h)| Line::from_iter(once(f).chain(h.spans)))
     }
 
     fn handle_command(&mut self) -> Result<()> {
@@ -313,13 +376,17 @@ impl<'a> AppState<'a> {
             }
             Event::Key(key) => {
                 if key.kind == KeyEventKind::Press {
-                    self.offset = match key.code {
-                        // KeyCode::Left | KeyCode::Char('h') => app.on_left(),
-                        KeyCode::Up | KeyCode::Char('k') => self.offset.saturating_sub(1),
-                        // KeyCode::Right | KeyCode::Char('l') => app.on_right(),
-                        KeyCode::Down | KeyCode::Char('j') => self.offset.saturating_add(1),
+                    match key.code {
+                        KeyCode::Left | KeyCode::Char('h') => self.show_file_names = true,
+                        KeyCode::Up | KeyCode::Char('k') => {
+                            self.offset = self.offset.saturating_sub(1)
+                        }
+                        KeyCode::Right | KeyCode::Char('l') => self.show_file_names = false,
+                        KeyCode::Down | KeyCode::Char('j') => {
+                            self.offset = self.offset.saturating_add(1)
+                        }
                         // KeyCode::Char(c) => app.on_key(c),
-                        _ => self.offset,
+                        _ => (),
                     };
 
                     self.offset = self.offset.min(self.lines.len() - 1);
