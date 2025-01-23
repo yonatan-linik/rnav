@@ -21,7 +21,8 @@ pub struct AppState<'a> {
     main_area_title: String,
     file_names: Vec<Arc<str>>,
     lines: Vec<LogLine<'a>>,
-    offset: usize,
+    line_offset: usize,
+    column_offset: usize,
     filter_ins: Vec<regex::Regex>,
     filter_outs: Vec<regex::Regex>,
     command_mode: bool,
@@ -60,7 +61,8 @@ impl<'a> AppState<'a> {
         Self {
             main_area_title,
             lines,
-            offset: 0,
+            line_offset: 0,
+            column_offset: 0,
             filter_ins: vec![],
             filter_outs: vec![],
             command_mode: false,
@@ -176,20 +178,22 @@ impl<'a> AppState<'a> {
         self.lines
             .iter()
             .enumerate()
-            .skip(self.offset)
+            .skip(self.line_offset)
             .filter(|(_, l)| self.apply_filter_ins(l))
             .filter(|(_, l)| self.apply_filter_outs(l))
     }
 
-    fn apply_marks(
+    fn apply_marks_and_offset(
         &'a self,
         log_lines: impl IntoIterator<Item = LogLine<'a>> + 'a,
     ) -> impl IntoIterator<Item = Span<'a>> + 'a {
         log_lines.into_iter().map(|l| {
+            let offset = self.column_offset.min(l.log.len());
+            let log = &l.log[offset..];
             if l.marked {
-                Span::styled(l.log, Style::new().bg(Color::White).fg(Color::Black))
+                Span::styled(log, Style::new().bg(Color::White).fg(Color::Black))
             } else {
-                Span::raw(l.log)
+                Span::raw(log)
             }
         })
     }
@@ -237,7 +241,7 @@ impl<'a> AppState<'a> {
     pub fn lines_iter(&'a self) -> impl IntoIterator<Item = Line<'a>> + 'a {
         let filtered_lines = self.filter_lines_iter().into_iter().map(|(_, l)| l.clone());
 
-        let marked_lines = self.apply_marks(filtered_lines);
+        let marked_lines = self.apply_marks_and_offset(filtered_lines);
 
         let highlighted_lines = self.apply_highlights(marked_lines);
 
@@ -377,19 +381,30 @@ impl<'a> AppState<'a> {
             Event::Key(key) => {
                 if key.kind == KeyEventKind::Press {
                     match key.code {
-                        KeyCode::Left | KeyCode::Char('h') => self.show_file_names = true,
-                        KeyCode::Up | KeyCode::Char('k') => {
-                            self.offset = self.offset.saturating_sub(1)
+                        KeyCode::Left | KeyCode::Char('h') => {
+                            if self.column_offset == 0 {
+                                self.show_file_names = true
+                            }
+                            self.column_offset = self.column_offset.saturating_sub(10);
                         }
-                        KeyCode::Right | KeyCode::Char('l') => self.show_file_names = false,
+                        KeyCode::Up | KeyCode::Char('k') => {
+                            self.line_offset = self.line_offset.saturating_sub(1)
+                        }
+                        KeyCode::Right | KeyCode::Char('l') => {
+                            if !self.show_file_names {
+                                self.column_offset = self.column_offset.saturating_add(10);
+                            } else {
+                                self.show_file_names = false;
+                            }
+                        }
                         KeyCode::Down | KeyCode::Char('j') => {
-                            self.offset = self.offset.saturating_add(1)
+                            self.line_offset = self.line_offset.saturating_add(1)
                         }
                         // KeyCode::Char(c) => app.on_key(c),
                         _ => (),
                     };
 
-                    self.offset = self.offset.min(self.lines.len() - 1);
+                    self.line_offset = self.line_offset.min(self.lines.len() - 1);
 
                     match key.code {
                         KeyCode::Char(':') => {
@@ -408,13 +423,13 @@ impl<'a> AppState<'a> {
                 }
             }
             Event::Mouse(mouse) => {
-                self.offset = match mouse.kind {
-                    MouseEventKind::ScrollDown => self.offset.saturating_sub(1),
-                    MouseEventKind::ScrollUp => self.offset.saturating_add(1),
-                    _ => self.offset,
+                self.line_offset = match mouse.kind {
+                    MouseEventKind::ScrollDown => self.line_offset.saturating_sub(1),
+                    MouseEventKind::ScrollUp => self.line_offset.saturating_add(1),
+                    _ => self.line_offset,
                 };
 
-                self.offset = self.offset.min(self.lines.len() - 1);
+                self.line_offset = self.line_offset.min(self.lines.len() - 1);
             }
             _ => (),
         }
