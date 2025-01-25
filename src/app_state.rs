@@ -164,13 +164,22 @@ impl<'a> AppState<'a> {
             .map(|l| self.apply_highlights_to_line(l))
     }
 
-    fn filter_lines_iter(&'a self) -> impl IntoIterator<Item = (usize, &LogLine<'a>)> {
+    fn filter_all_lines_iter(&'a self) -> impl IntoIterator<Item = (usize, &LogLine<'a>)> {
         self.lines
             .iter()
             .enumerate()
-            .skip(self.line_offset)
             .filter(|(_, l)| self.apply_filter_ins(l))
             .filter(|(_, l)| self.apply_filter_outs(l))
+    }
+
+    fn filter_lines_iter(&'a self) -> impl IntoIterator<Item = (usize, &LogLine<'a>)> {
+        self.filter_all_lines_iter()
+            .into_iter()
+            .skip(self.line_offset)
+    }
+
+    pub fn filtered_lines_count(&self) -> usize {
+        self.filter_all_lines_iter().into_iter().count()
     }
 
     fn apply_marks_and_offset(
@@ -307,6 +316,9 @@ impl<'a> AppState<'a> {
         self.command_mode = false;
         self.current_command.clear();
         self.command_completions.clear();
+
+        let shown_lines_count = self.filtered_lines_count();
+        self.line_offset = self.line_offset.min(shown_lines_count - 1);
     }
 
     fn longest_filtered_log(&self) -> usize {
@@ -346,10 +358,10 @@ impl<'a> AppState<'a> {
                     modifiers: KeyModifiers::NONE,
                     ..
                 }) => {
-                    self.command_mode = false;
                     if let Err(err) = self.handle_command() {
                         self.present_error = format!("{err}");
                     }
+                    self.exit_command_mode();
                 }
                 Event::Key(KeyEvent {
                     code: KeyCode::Backspace,
@@ -377,6 +389,17 @@ impl<'a> AppState<'a> {
 
                     if completions.len() > 1 {
                         self.command_completions = completions;
+                    }
+                }
+                Event::Key(KeyEvent {
+                    code: KeyCode::Char('w'),
+                    modifiers: KeyModifiers::CONTROL,
+                    ..
+                }) => {
+                    if let Some(space) = self.current_command.rfind(' ') {
+                        self.current_command.truncate(space);
+                    } else {
+                        self.current_command.clear();
                     }
                 }
                 _ => (),
@@ -429,7 +452,7 @@ impl<'a> AppState<'a> {
                         _ => (),
                     };
 
-                    self.line_offset = self.line_offset.min(self.lines.len() - 1);
+                    self.line_offset = self.line_offset.min(self.filtered_lines_count() - 1);
 
                     match key.code {
                         KeyCode::Char(':') => {

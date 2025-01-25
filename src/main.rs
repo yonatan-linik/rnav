@@ -11,6 +11,7 @@ use log_file::LogFile;
 use ratatui::{
     layout::{Constraint, Layout},
     text::{Line, Text},
+    widgets::{Block, Borders},
     DefaultTerminal, Frame,
 };
 
@@ -87,7 +88,10 @@ fn render(frame: &mut Frame, state: &mut AppState) {
     command_bar_styled.push_line(state.command_bar_completions());
 
     frame.render_widget(command_bar_styled, command_bar);
-    frame.render_widget(Text::from_iter(state.lines_iter()), main_area);
+
+    let b = Block::new().borders(Borders::RIGHT);
+    frame.render_widget(&b, main_area);
+    frame.render_widget(Text::from_iter(state.lines_iter()), b.inner(main_area));
 
     frame.render_widget(state.top_log_line_title_bar_text(), title_bar);
 }
