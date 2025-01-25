@@ -9,6 +9,7 @@ use ratatui::text::{Line, Span, Text};
 
 use crate::command::Command;
 use crate::error::{Error, Result};
+use crate::filter::{Filter, FilterKind};
 use crate::log_file::LogFile;
 use crate::log_line::LogLine;
 
@@ -22,8 +23,7 @@ pub struct AppState<'a> {
     lines: Vec<LogLine<'a>>,
     line_offset: usize,
     column_offset: usize,
-    filter_ins: Vec<regex::Regex>,
-    filter_outs: Vec<regex::Regex>,
+    filters: Vec<Filter>,
     command_mode: bool,
     current_command: String,
     command_completions: Vec<&'static str>,
@@ -55,8 +55,7 @@ impl<'a> AppState<'a> {
             lines,
             line_offset: 0,
             column_offset: 0,
-            filter_ins: vec![],
-            filter_outs: vec![],
+            filters: vec![],
             command_mode: false,
             current_command: String::new(),
             command_completions: vec![],
@@ -68,7 +67,7 @@ impl<'a> AppState<'a> {
     }
 
     pub fn total_filters_enabled(&self) -> usize {
-        self.filter_ins.len() + self.filter_outs.len()
+        self.filters.iter().filter(|f| f.is_enabled()).count()
     }
 
     pub fn command_bar_text(&self) -> Text<'a> {
@@ -102,12 +101,27 @@ impl<'a> AppState<'a> {
         self.command_bar_text().lines.len() + self.command_bar_completions().iter().count().min(1)
     }
 
-    fn apply_filter_ins(&self, l: &LogLine) -> bool {
-        self.filter_ins.is_empty() || self.filter_ins.iter().any(|f| f.is_match(l.log))
-    }
+    fn keep_line(&self, l: &LogLine) -> bool {
+        if self.filters.is_empty() {
+            return true;
+        }
 
-    fn apply_filter_outs(&self, l: &LogLine) -> bool {
-        self.filter_outs.is_empty() || self.filter_outs.iter().all(|f| !f.is_match(l.log))
+        let filtered_in = self
+            .filters
+            .iter()
+            .filter(|f| f.filter_kind() == FilterKind::In)
+            .fold(None, |acc, f| {
+                Some(acc.unwrap_or(false) || f.keep_line(l.log))
+            })
+            .unwrap_or(true);
+
+        let filtered_out = self
+            .filters
+            .iter()
+            .filter(|f| f.filter_kind() == FilterKind::Out)
+            .any(|f| !f.keep_line(l.log));
+
+        filtered_in && !filtered_out
     }
 
     fn split_keep<'b>(
@@ -168,8 +182,7 @@ impl<'a> AppState<'a> {
         self.lines
             .iter()
             .enumerate()
-            .filter(|(_, l)| self.apply_filter_ins(l))
-            .filter(|(_, l)| self.apply_filter_outs(l))
+            .filter(|(_, l)| self.keep_line(l))
     }
 
     fn filter_lines_iter(&'a self) -> impl IntoIterator<Item = (usize, &LogLine<'a>)> {
@@ -294,11 +307,11 @@ impl<'a> AppState<'a> {
         match command {
             Command::FilterIn => {
                 let r = regex::Regex::new(arguments)?;
-                self.filter_ins.push(r);
+                self.filters.push(Filter::new(FilterKind::In, r));
             }
             Command::FilterOut => {
                 let r = regex::Regex::new(arguments)?;
-                self.filter_outs.push(r);
+                self.filters.push(Filter::new(FilterKind::Out, r));
             }
             Command::Highlight => {
                 let r = regex::Regex::new(arguments)?;
@@ -459,8 +472,7 @@ impl<'a> AppState<'a> {
                             self.command_mode = true;
                         }
                         KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                            self.filter_ins.clear();
-                            self.filter_outs.clear();
+                            self.filters.clear();
                             self.highlights.clear();
                         }
                         KeyCode::Char('m') => {

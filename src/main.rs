@@ -1,6 +1,7 @@
 mod app_state;
 mod command;
 mod error;
+mod filter;
 mod log_file;
 mod log_line;
 
