@@ -18,7 +18,6 @@ pub enum AppAction {
 }
 
 pub struct AppState<'a> {
-    main_area_title: String,
     file_names: Vec<Arc<str>>,
     lines: Vec<LogLine<'a>>,
     line_offset: usize,
@@ -50,16 +49,9 @@ impl<'a> AppState<'a> {
             .collect();
         lines.sort_by(|a, b| a.time.cmp(&b.time));
 
-        let main_area_title = if files.len() == 1 {
-            files[0].name.to_string()
-        } else {
-            format!("Looking at {} log files", files.len())
-        };
-
         let file_names = files.iter().map(|f| f.name.clone()).collect();
 
         Self {
-            main_area_title,
             lines,
             line_offset: 0,
             column_offset: 0,
@@ -79,7 +71,7 @@ impl<'a> AppState<'a> {
         self.filter_ins.len() + self.filter_outs.len()
     }
 
-    pub fn status_bar_text(&self) -> Text<'a> {
+    pub fn command_bar_text(&self) -> Text<'a> {
         if !self.present_error.is_empty() {
             return Text::from_iter(self.present_error.lines().map(|l| l.to_string().red()));
         }
@@ -98,7 +90,7 @@ impl<'a> AppState<'a> {
         text
     }
 
-    pub fn status_bar_completions(&self) -> Line<'_> {
+    pub fn command_bar_completions(&self) -> Line<'_> {
         Line::from_iter(
             self.command_completions
                 .iter()
@@ -107,11 +99,7 @@ impl<'a> AppState<'a> {
     }
 
     pub fn state_bar_text_number_of_lines(&self) -> usize {
-        self.status_bar_text().lines.len() + self.status_bar_completions().iter().count().min(1)
-    }
-
-    pub fn main_area_title(&self) -> &str {
-        &self.main_area_title
+        self.command_bar_text().lines.len() + self.command_bar_completions().iter().count().min(1)
     }
 
     fn apply_filter_ins(&self, l: &LogLine) -> bool {
@@ -144,6 +132,8 @@ impl<'a> AppState<'a> {
     }
 
     fn apply_highlights_to_line(&'a self, log_line: Span<'a>) -> Line<'a> {
+        // If the log line is marked make sure it is for the entire line
+        let bg_color = log_line.style.bg.unwrap_or_default();
         let mut spans: Box<dyn Iterator<Item = Span<'a>>> = Box::new(once(log_line));
 
         for (regex, color) in &self.highlights {
@@ -162,7 +152,7 @@ impl<'a> AppState<'a> {
             spans = new_spans;
         }
 
-        Line::from_iter(spans)
+        Line::from_iter(spans).bg(bg_color)
     }
 
     fn apply_highlights(
@@ -228,11 +218,11 @@ impl<'a> AppState<'a> {
                 };
 
                 if !self.show_file_names {
-                    Span::styled(sep, curr.color)
+                    Span::styled(sep, (curr.color, Color::default()))
                 } else {
                     Span::styled(
                         format!("{:width$}{sep}", curr.name, width = max_file_name_length),
-                        curr.color,
+                        (curr.color, Color::default()),
                     )
                 }
             })
@@ -250,7 +240,31 @@ impl<'a> AppState<'a> {
         named_lines
             .into_iter()
             .zip(highlighted_lines)
-            .map(|(f, h)| Line::from_iter(once(f).chain(h.spans)))
+            .map(|(f, h)| {
+                Line::from_iter(once(f).chain(h.spans)).bg(h.style.bg.unwrap_or_default())
+            })
+    }
+
+    pub fn top_log_line_title_bar_text(&self) -> Line<'_> {
+        let Some(l) = self.filter_lines_iter().into_iter().next().map(|(_, l)| l) else {
+            return Line::default();
+        };
+
+        let log_text = Span::styled(" LOG ", (Color::White, l.src_file.color));
+
+        let log_time = if l.time == chrono::DateTime::<chrono::Utc>::MAX_UTC.fixed_offset() {
+            Span::raw("⟩")
+        } else {
+            Span::raw(format!("⟩{}⟩", l.time.to_rfc3339()))
+        };
+
+        let log_file_name = Span::raw(l.src_file.name.replace('/', "⟩"));
+
+        let bg_color = Color::Rgb(40, 40, 40);
+
+        Line::from_iter([log_text, log_time, log_file_name])
+            .fg(Color::Gray)
+            .bg(bg_color)
     }
 
     fn handle_command(&mut self) -> Result<()> {
@@ -293,6 +307,14 @@ impl<'a> AppState<'a> {
         self.command_mode = false;
         self.current_command.clear();
         self.command_completions.clear();
+    }
+
+    fn longest_filtered_log(&self) -> usize {
+        self.filter_lines_iter()
+            .into_iter()
+            .map(|(_, l)| l.log.len())
+            .max()
+            .unwrap_or(0)
     }
 
     pub fn read_event(&mut self, event: Event) -> AppAction {
@@ -385,14 +407,17 @@ impl<'a> AppState<'a> {
                             if self.column_offset == 0 {
                                 self.show_file_names = true
                             }
-                            self.column_offset = self.column_offset.saturating_sub(10);
+                            self.column_offset = self.column_offset.saturating_sub(10)
                         }
                         KeyCode::Up | KeyCode::Char('k') => {
                             self.line_offset = self.line_offset.saturating_sub(1)
                         }
                         KeyCode::Right | KeyCode::Char('l') => {
                             if !self.show_file_names {
-                                self.column_offset = self.column_offset.saturating_add(10);
+                                self.column_offset = self
+                                    .column_offset
+                                    .saturating_add(10)
+                                    .min(self.longest_filtered_log().saturating_sub(1) / 10 * 10);
                             } else {
                                 self.show_file_names = false;
                             }

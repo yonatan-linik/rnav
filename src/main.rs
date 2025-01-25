@@ -9,9 +9,8 @@ use crossterm::event;
 use error::Result;
 use log_file::LogFile;
 use ratatui::{
-    layout::{Constraint, Layout, Margin},
-    text::Text,
-    widgets::Block,
+    layout::{Constraint, Layout},
+    text::{Line, Text},
     DefaultTerminal, Frame,
 };
 
@@ -66,26 +65,29 @@ fn render(frame: &mut Frame, state: &mut AppState) {
     use Constraint::{Length, Min};
 
     let vertical = Layout::vertical([
+        Length(1),
         Min(3),
-        Length(2 + state.state_bar_text_number_of_lines() as u16),
+        Length(1),
+        Length(state.state_bar_text_number_of_lines() as u16),
     ]);
-    let [main_area, status_area] = vertical.areas(frame.area());
+    let [title_bar, main_area, status_area, command_bar] = vertical.areas(frame.area());
 
     frame.render_widget(
-        Block::bordered().title("Status Bar").title_bottom(format!(
-            "{} filters are currently active",
-            state.total_filters_enabled()
-        )),
+        Line::styled(
+            format!(
+                "{} filters are currently active",
+                state.total_filters_enabled()
+            ),
+            (ratatui::style::Color::Gray, ratatui::style::Color::DarkGray),
+        ),
         status_area,
     );
 
-    let mut status_bar_styled = state.status_bar_text();
-    status_bar_styled.push_line(state.status_bar_completions());
+    let mut command_bar_styled = state.command_bar_text();
+    command_bar_styled.push_line(state.command_bar_completions());
 
-    frame.render_widget(status_bar_styled, status_area.inner(Margin::new(1, 1)));
-    frame.render_widget(Block::bordered().title(state.main_area_title()), main_area);
-    frame.render_widget(
-        Text::from_iter(state.lines_iter()),
-        main_area.inner(Margin::new(1, 1)),
-    );
+    frame.render_widget(command_bar_styled, command_bar);
+    frame.render_widget(Text::from_iter(state.lines_iter()), main_area);
+
+    frame.render_widget(state.top_log_line_title_bar_text(), title_bar);
 }
