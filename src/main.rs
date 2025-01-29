@@ -88,10 +88,7 @@ fn render(frame: &mut Frame, state: &mut AppState) {
 
     match state.mode() {
         AppMode::Command => {
-            let mut command_bar_styled = state.command_bar_text();
-            command_bar_styled.push_line(state.command_bar_completions());
-
-            frame.render_widget(command_bar_styled, command_bar);
+            frame.render_widget(state.command_bar_text(), command_bar);
         }
         AppMode::FiltersMenu => {
             let (info_lines, table, mut table_state) = state.filters.filters_menu_text();

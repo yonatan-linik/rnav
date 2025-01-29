@@ -4,11 +4,11 @@ use std::sync::Arc;
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEventKind};
 use itertools::Itertools;
 use rand::Rng as _;
-use ratatui::style::{Color, Modifier, Style, Stylize};
+use ratatui::style::{Color, Style, Stylize};
 use ratatui::text::{Line, Span, Text};
 
-use crate::command::Command;
-use crate::error::{Error, Result};
+use crate::command::{Command, CommandType, Commands};
+use crate::error::Result;
 use crate::filter::Filters;
 use crate::log_file::LogFile;
 use crate::log_line::LogLine;
@@ -31,10 +31,8 @@ pub struct AppState<'a> {
     line_offset: usize,
     column_offset: usize,
     pub filters: Filters,
+    commands: Commands,
     mode: AppMode,
-    current_command: String,
-    command_completions: Vec<&'static str>,
-    present_error: String,
     highlights: Vec<(regex::Regex, Color)>,
     show_file_names: bool,
 }
@@ -64,12 +62,10 @@ impl<'a> AppState<'a> {
             column_offset: 0,
             filters: Filters::new(),
             mode: AppMode::Logs,
-            current_command: String::new(),
-            command_completions: vec![],
-            present_error: String::new(),
             highlights: vec![],
             show_file_names: false,
             file_names,
+            commands: Commands::new(),
         }
     }
 
@@ -77,42 +73,16 @@ impl<'a> AppState<'a> {
         self.mode
     }
 
-    pub fn command_bar_text(&self) -> Text<'a> {
-        if !self.present_error.is_empty() {
-            return Text::from_iter(self.present_error.lines().map(|l| l.to_string().red()));
-        }
-
-        if self.mode != AppMode::Command {
-            return Text::default();
-        }
-
-        let mut text = Text::styled(
-            format!(":{}", self.current_command),
-            (Color::White, Modifier::BOLD),
-        );
-
-        text.push_span(Span::styled("█", Modifier::SLOW_BLINK));
-
-        text
-    }
-
-    pub fn command_bar_completions(&self) -> Line<'_> {
-        Line::from_iter(
-            self.command_completions
-                .iter()
-                .flat_map(|c| [Span::styled(*c, Color::White), Span::raw(" ")]),
-        )
-    }
-
     pub fn state_bar_text_number_of_lines(&self) -> usize {
         match self.mode {
-            AppMode::Command => {
-                self.command_bar_text().lines.len()
-                    + self.command_bar_completions().iter().count().min(1)
-            }
+            AppMode::Command => self.commands.command_bar_text(self.mode).lines.len(),
             AppMode::Logs => 0,
             AppMode::FiltersMenu => self.filters.filters_menu_size(),
         }
+    }
+
+    pub fn command_bar_text(&self) -> Text<'_> {
+        self.commands.command_bar_text(self.mode)
     }
 
     fn split_keep<'b>(
@@ -280,32 +250,18 @@ impl<'a> AppState<'a> {
             .bg(bg_color)
     }
 
-    fn handle_command(&mut self) -> Result<()> {
-        let mut curr_cmd = String::new();
-        std::mem::swap(&mut curr_cmd, &mut self.current_command);
-        let (command, arguments) = curr_cmd
-            .trim()
-            .split_once(|c: char| c.is_whitespace())
-            .unwrap_or((curr_cmd.trim(), ""));
-
-        let command: Command = command.parse()?;
-
-        // Currently all commands need arguments
-        if arguments.is_empty() {
-            return Err(Error::NoArgumentsGivenToCommand);
-        }
-
-        match command {
-            Command::FilterIn => {
-                let r = regex::Regex::new(arguments)?;
+    fn handle_command(&mut self, command: &Command) -> Result<()> {
+        match command.cmd_type {
+            CommandType::FilterIn => {
+                let r = regex::Regex::new(&command.args)?;
                 self.filters.create_in_filter(r);
             }
-            Command::FilterOut => {
-                let r = regex::Regex::new(arguments)?;
+            CommandType::FilterOut => {
+                let r = regex::Regex::new(&command.args)?;
                 self.filters.create_out_filter(r);
             }
-            Command::Highlight => {
-                let r = regex::Regex::new(arguments)?;
+            CommandType::Highlight => {
+                let r = regex::Regex::new(&command.args)?;
                 self.highlights.push((
                     r,
                     Color::from_u32(rand::thread_rng().gen_range(255..=0x00FF_FFFF)),
@@ -314,15 +270,6 @@ impl<'a> AppState<'a> {
         }
 
         Ok(())
-    }
-
-    fn exit_command_mode(&mut self) {
-        self.mode = AppMode::Logs;
-        self.current_command.clear();
-        self.command_completions.clear();
-
-        let shown_lines_count = self.filtered_lines_count();
-        self.line_offset = self.line_offset.min(shown_lines_count - 1);
     }
 
     fn longest_filtered_log(&self) -> usize {
@@ -338,78 +285,20 @@ impl<'a> AppState<'a> {
             return AppAction::NoAction;
         }
 
-        self.present_error.clear();
-        self.command_completions.clear();
+        let shown_lines_count = self.filtered_lines_count();
+        self.line_offset = self.line_offset.min(shown_lines_count - 1);
 
         match self.mode {
             AppMode::Command => {
-                match event {
-                    Event::Key(KeyEvent {
-                        code: KeyCode::Char(c),
-                        modifiers: KeyModifiers::NONE,
-                        ..
-                    }) => {
-                        self.current_command.push(c);
+                let (new_mode, cmd) = self.commands.read_event(event);
+                self.mode = new_mode.unwrap_or(AppMode::Command);
+                if let Some(cmd) = cmd {
+                    if let Err(err) = self.handle_command(&cmd) {
+                        self.commands.set_command_error(format!("{err}"));
+                        // Stay in command mode for one more keystroke
+                        self.mode = AppMode::Command;
                     }
-                    Event::Key(KeyEvent {
-                        code: KeyCode::Char(c),
-                        modifiers: KeyModifiers::SHIFT,
-                        ..
-                    }) => {
-                        self.current_command.push(c.to_ascii_uppercase());
-                    }
-                    Event::Key(KeyEvent {
-                        code: KeyCode::Enter,
-                        modifiers: KeyModifiers::NONE,
-                        ..
-                    }) => {
-                        if let Err(err) = self.handle_command() {
-                            self.present_error = format!("{err}");
-                        }
-                        self.exit_command_mode();
-                    }
-                    Event::Key(KeyEvent {
-                        code: KeyCode::Backspace,
-                        modifiers: KeyModifiers::NONE,
-                        ..
-                    }) => {
-                        self.current_command.pop();
-                    }
-                    Event::Key(KeyEvent {
-                        code: KeyCode::Esc, ..
-                    }) => {
-                        self.exit_command_mode();
-                    }
-                    Event::Key(KeyEvent {
-                        code: KeyCode::Tab,
-                        modifiers: KeyModifiers::NONE,
-                        ..
-                    }) => {
-                        let (longest_common_prefix, completions) =
-                            Command::auto_complete(&self.current_command);
-
-                        if let Some(prefix) = longest_common_prefix {
-                            self.current_command = prefix;
-                        }
-
-                        if completions.len() > 1 {
-                            self.command_completions = completions;
-                        }
-                    }
-                    Event::Key(KeyEvent {
-                        code: KeyCode::Char('w'),
-                        modifiers: KeyModifiers::CONTROL,
-                        ..
-                    }) => {
-                        if let Some(space) = self.current_command.rfind(' ') {
-                            self.current_command.truncate(space);
-                        } else {
-                            self.current_command.clear();
-                        }
-                    }
-                    _ => (),
                 }
-                return AppAction::NoAction;
             }
             AppMode::FiltersMenu => {
                 let (new_mode, app_action) = self.filters.read_event(event);
