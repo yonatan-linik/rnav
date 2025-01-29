@@ -9,7 +9,7 @@ use ratatui::text::{Line, Span, Text};
 
 use crate::command::Command;
 use crate::error::{Error, Result};
-use crate::filter::{Filter, FilterKind};
+use crate::filter::Filters;
 use crate::log_file::LogFile;
 use crate::log_line::LogLine;
 
@@ -18,13 +18,20 @@ pub enum AppAction {
     NoAction,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum AppMode {
+    Logs,
+    Command,
+    FiltersMenu,
+}
+
 pub struct AppState<'a> {
     file_names: Vec<Arc<str>>,
     lines: Vec<LogLine<'a>>,
     line_offset: usize,
     column_offset: usize,
-    filters: Vec<Filter>,
-    command_mode: bool,
+    pub filters: Filters,
+    mode: AppMode,
     current_command: String,
     command_completions: Vec<&'static str>,
     present_error: String,
@@ -55,8 +62,8 @@ impl<'a> AppState<'a> {
             lines,
             line_offset: 0,
             column_offset: 0,
-            filters: vec![],
-            command_mode: false,
+            filters: Filters::new(),
+            mode: AppMode::Logs,
             current_command: String::new(),
             command_completions: vec![],
             present_error: String::new(),
@@ -66,8 +73,8 @@ impl<'a> AppState<'a> {
         }
     }
 
-    pub fn total_filters_enabled(&self) -> usize {
-        self.filters.iter().filter(|f| f.is_enabled()).count()
+    pub fn mode(&self) -> AppMode {
+        self.mode
     }
 
     pub fn command_bar_text(&self) -> Text<'a> {
@@ -75,7 +82,7 @@ impl<'a> AppState<'a> {
             return Text::from_iter(self.present_error.lines().map(|l| l.to_string().red()));
         }
 
-        if !self.command_mode {
+        if self.mode != AppMode::Command {
             return Text::default();
         }
 
@@ -98,30 +105,14 @@ impl<'a> AppState<'a> {
     }
 
     pub fn state_bar_text_number_of_lines(&self) -> usize {
-        self.command_bar_text().lines.len() + self.command_bar_completions().iter().count().min(1)
-    }
-
-    fn keep_line(&self, l: &LogLine) -> bool {
-        if self.filters.is_empty() {
-            return true;
+        match self.mode {
+            AppMode::Command => {
+                self.command_bar_text().lines.len()
+                    + self.command_bar_completions().iter().count().min(1)
+            }
+            AppMode::Logs => 0,
+            AppMode::FiltersMenu => self.filters.filters_menu_size(),
         }
-
-        let filtered_in = self
-            .filters
-            .iter()
-            .filter(|f| f.filter_kind() == FilterKind::In)
-            .fold(None, |acc, f| {
-                Some(acc.unwrap_or(false) || f.keep_line(l.log))
-            })
-            .unwrap_or(true);
-
-        let filtered_out = self
-            .filters
-            .iter()
-            .filter(|f| f.filter_kind() == FilterKind::Out)
-            .any(|f| !f.keep_line(l.log));
-
-        filtered_in && !filtered_out
     }
 
     fn split_keep<'b>(
@@ -182,7 +173,7 @@ impl<'a> AppState<'a> {
         self.lines
             .iter()
             .enumerate()
-            .filter(|(_, l)| self.keep_line(l))
+            .filter(|(_, l)| self.filters.keep_line(l.log))
     }
 
     fn filter_lines_iter(&'a self) -> impl IntoIterator<Item = (usize, &LogLine<'a>)> {
@@ -307,11 +298,11 @@ impl<'a> AppState<'a> {
         match command {
             Command::FilterIn => {
                 let r = regex::Regex::new(arguments)?;
-                self.filters.push(Filter::new(FilterKind::In, r));
+                self.filters.create_in_filter(r);
             }
             Command::FilterOut => {
                 let r = regex::Regex::new(arguments)?;
-                self.filters.push(Filter::new(FilterKind::Out, r));
+                self.filters.create_out_filter(r);
             }
             Command::Highlight => {
                 let r = regex::Regex::new(arguments)?;
@@ -326,7 +317,7 @@ impl<'a> AppState<'a> {
     }
 
     fn exit_command_mode(&mut self) {
-        self.command_mode = false;
+        self.mode = AppMode::Logs;
         self.current_command.clear();
         self.command_completions.clear();
 
@@ -350,148 +341,163 @@ impl<'a> AppState<'a> {
         self.present_error.clear();
         self.command_completions.clear();
 
-        if self.command_mode {
-            match event {
-                Event::Key(KeyEvent {
-                    code: KeyCode::Char(c),
-                    modifiers: KeyModifiers::NONE,
-                    ..
-                }) => {
-                    self.current_command.push(c);
-                }
-                Event::Key(KeyEvent {
-                    code: KeyCode::Char(c),
-                    modifiers: KeyModifiers::SHIFT,
-                    ..
-                }) => {
-                    self.current_command.push(c.to_ascii_uppercase());
-                }
-                Event::Key(KeyEvent {
-                    code: KeyCode::Enter,
-                    modifiers: KeyModifiers::NONE,
-                    ..
-                }) => {
-                    if let Err(err) = self.handle_command() {
-                        self.present_error = format!("{err}");
+        match self.mode {
+            AppMode::Command => {
+                match event {
+                    Event::Key(KeyEvent {
+                        code: KeyCode::Char(c),
+                        modifiers: KeyModifiers::NONE,
+                        ..
+                    }) => {
+                        self.current_command.push(c);
                     }
-                    self.exit_command_mode();
-                }
-                Event::Key(KeyEvent {
-                    code: KeyCode::Backspace,
-                    modifiers: KeyModifiers::NONE,
-                    ..
-                }) => {
-                    self.current_command.pop();
-                }
-                Event::Key(KeyEvent {
-                    code: KeyCode::Esc, ..
-                }) => {
-                    self.exit_command_mode();
-                }
-                Event::Key(KeyEvent {
-                    code: KeyCode::Tab,
-                    modifiers: KeyModifiers::NONE,
-                    ..
-                }) => {
-                    let (longest_common_prefix, completions) =
-                        Command::auto_complete(&self.current_command);
+                    Event::Key(KeyEvent {
+                        code: KeyCode::Char(c),
+                        modifiers: KeyModifiers::SHIFT,
+                        ..
+                    }) => {
+                        self.current_command.push(c.to_ascii_uppercase());
+                    }
+                    Event::Key(KeyEvent {
+                        code: KeyCode::Enter,
+                        modifiers: KeyModifiers::NONE,
+                        ..
+                    }) => {
+                        if let Err(err) = self.handle_command() {
+                            self.present_error = format!("{err}");
+                        }
+                        self.exit_command_mode();
+                    }
+                    Event::Key(KeyEvent {
+                        code: KeyCode::Backspace,
+                        modifiers: KeyModifiers::NONE,
+                        ..
+                    }) => {
+                        self.current_command.pop();
+                    }
+                    Event::Key(KeyEvent {
+                        code: KeyCode::Esc, ..
+                    }) => {
+                        self.exit_command_mode();
+                    }
+                    Event::Key(KeyEvent {
+                        code: KeyCode::Tab,
+                        modifiers: KeyModifiers::NONE,
+                        ..
+                    }) => {
+                        let (longest_common_prefix, completions) =
+                            Command::auto_complete(&self.current_command);
 
-                    if let Some(prefix) = longest_common_prefix {
-                        self.current_command = prefix;
-                    }
+                        if let Some(prefix) = longest_common_prefix {
+                            self.current_command = prefix;
+                        }
 
-                    if completions.len() > 1 {
-                        self.command_completions = completions;
+                        if completions.len() > 1 {
+                            self.command_completions = completions;
+                        }
                     }
-                }
-                Event::Key(KeyEvent {
-                    code: KeyCode::Char('w'),
-                    modifiers: KeyModifiers::CONTROL,
-                    ..
-                }) => {
-                    if let Some(space) = self.current_command.rfind(' ') {
-                        self.current_command.truncate(space);
-                    } else {
-                        self.current_command.clear();
+                    Event::Key(KeyEvent {
+                        code: KeyCode::Char('w'),
+                        modifiers: KeyModifiers::CONTROL,
+                        ..
+                    }) => {
+                        if let Some(space) = self.current_command.rfind(' ') {
+                            self.current_command.truncate(space);
+                        } else {
+                            self.current_command.clear();
+                        }
                     }
+                    _ => (),
                 }
-                _ => (),
+                return AppAction::NoAction;
             }
-            return AppAction::NoAction;
-        }
-
-        match event {
-            Event::Key(KeyEvent {
-                code: KeyCode::Char('c'),
-                modifiers: KeyModifiers::CONTROL,
-                ..
-            })
-            | Event::Key(KeyEvent {
-                code: KeyCode::Esc, ..
-            })
-            | Event::Key(KeyEvent {
-                code: KeyCode::Char('q'),
-                modifiers: KeyModifiers::NONE,
-                ..
-            }) => {
-                return AppAction::EndApp;
+            AppMode::FiltersMenu => {
+                let (new_mode, app_action) = self.filters.read_event(event);
+                self.mode = new_mode.unwrap_or(AppMode::FiltersMenu);
+                return app_action.unwrap_or(AppAction::NoAction);
             }
-            Event::Key(key) => {
-                if key.kind == KeyEventKind::Press {
-                    match key.code {
-                        KeyCode::Left | KeyCode::Char('h') => {
-                            if self.column_offset == 0 {
-                                self.show_file_names = true
+            AppMode::Logs => {
+                match event {
+                    Event::Key(KeyEvent {
+                        code: KeyCode::Char('c'),
+                        modifiers: KeyModifiers::CONTROL,
+                        ..
+                    })
+                    | Event::Key(KeyEvent {
+                        code: KeyCode::Esc, ..
+                    })
+                    | Event::Key(KeyEvent {
+                        code: KeyCode::Char('q'),
+                        modifiers: KeyModifiers::NONE,
+                        ..
+                    }) => {
+                        return AppAction::EndApp;
+                    }
+                    Event::Key(key) => {
+                        if key.kind == KeyEventKind::Press {
+                            match key.code {
+                                KeyCode::Left | KeyCode::Char('h') => {
+                                    if self.column_offset == 0 {
+                                        self.show_file_names = true
+                                    }
+                                    self.column_offset = self.column_offset.saturating_sub(10)
+                                }
+                                KeyCode::Up | KeyCode::Char('k') => {
+                                    self.line_offset = self.line_offset.saturating_sub(1)
+                                }
+                                KeyCode::Right | KeyCode::Char('l') => {
+                                    if !self.show_file_names {
+                                        self.column_offset =
+                                            self.column_offset.saturating_add(10).min(
+                                                self.longest_filtered_log().saturating_sub(1) / 10
+                                                    * 10,
+                                            );
+                                    } else {
+                                        self.show_file_names = false;
+                                    }
+                                }
+                                KeyCode::Down | KeyCode::Char('j') => {
+                                    self.line_offset = self.line_offset.saturating_add(1)
+                                }
+                                // KeyCode::Char(c) => app.on_key(c),
+                                _ => (),
+                            };
+
+                            self.line_offset =
+                                self.line_offset.min(self.filtered_lines_count() - 1);
+
+                            match key.code {
+                                KeyCode::Char(':') => {
+                                    self.mode = AppMode::Command;
+                                }
+                                KeyCode::Char('r')
+                                    if key.modifiers.contains(KeyModifiers::CONTROL) =>
+                                {
+                                    self.filters.clear();
+                                    self.highlights.clear();
+                                }
+                                KeyCode::Char('m') => {
+                                    self.flip_mark_of_top_log_line();
+                                }
+                                KeyCode::Tab => {
+                                    self.mode = AppMode::FiltersMenu;
+                                }
+                                _ => (),
                             }
-                            self.column_offset = self.column_offset.saturating_sub(10)
                         }
-                        KeyCode::Up | KeyCode::Char('k') => {
-                            self.line_offset = self.line_offset.saturating_sub(1)
-                        }
-                        KeyCode::Right | KeyCode::Char('l') => {
-                            if !self.show_file_names {
-                                self.column_offset = self
-                                    .column_offset
-                                    .saturating_add(10)
-                                    .min(self.longest_filtered_log().saturating_sub(1) / 10 * 10);
-                            } else {
-                                self.show_file_names = false;
-                            }
-                        }
-                        KeyCode::Down | KeyCode::Char('j') => {
-                            self.line_offset = self.line_offset.saturating_add(1)
-                        }
-                        // KeyCode::Char(c) => app.on_key(c),
-                        _ => (),
-                    };
-
-                    self.line_offset = self.line_offset.min(self.filtered_lines_count() - 1);
-
-                    match key.code {
-                        KeyCode::Char(':') => {
-                            self.command_mode = true;
-                        }
-                        KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                            self.filters.clear();
-                            self.highlights.clear();
-                        }
-                        KeyCode::Char('m') => {
-                            self.flip_mark_of_top_log_line();
-                        }
-                        _ => (),
                     }
+                    Event::Mouse(mouse) => {
+                        self.line_offset = match mouse.kind {
+                            MouseEventKind::ScrollDown => self.line_offset.saturating_sub(1),
+                            MouseEventKind::ScrollUp => self.line_offset.saturating_add(1),
+                            _ => self.line_offset,
+                        };
+
+                        self.line_offset = self.line_offset.min(self.lines.len() - 1);
+                    }
+                    _ => (),
                 }
             }
-            Event::Mouse(mouse) => {
-                self.line_offset = match mouse.kind {
-                    MouseEventKind::ScrollDown => self.line_offset.saturating_sub(1),
-                    MouseEventKind::ScrollUp => self.line_offset.saturating_add(1),
-                    _ => self.line_offset,
-                };
-
-                self.line_offset = self.line_offset.min(self.lines.len() - 1);
-            }
-            _ => (),
         }
 
         AppAction::NoAction

@@ -5,14 +5,14 @@ mod filter;
 mod log_file;
 mod log_line;
 
-use app_state::AppState;
+use app_state::{AppMode, AppState};
 use crossterm::event;
 use error::Result;
 use log_file::LogFile;
 use ratatui::{
-    layout::{Constraint, Layout},
+    layout::{Constraint, Layout, Rect},
     text::{Line, Text},
-    widgets::{Block, Borders},
+    widgets::{Block, Borders, StatefulWidget},
     DefaultTerminal, Frame,
 };
 
@@ -70,6 +70,7 @@ fn render(frame: &mut Frame, state: &mut AppState) {
         Length(1),
         Min(3),
         Length(1),
+        // Min(2),
         Length(state.state_bar_text_number_of_lines() as u16),
     ]);
     let [title_bar, main_area, status_area, command_bar] = vertical.areas(frame.area());
@@ -78,17 +79,34 @@ fn render(frame: &mut Frame, state: &mut AppState) {
         Line::styled(
             format!(
                 "{} filters are currently active",
-                state.total_filters_enabled()
+                state.filters.total_filters_enabled()
             ),
             (ratatui::style::Color::Gray, ratatui::style::Color::DarkGray),
         ),
         status_area,
     );
 
-    let mut command_bar_styled = state.command_bar_text();
-    command_bar_styled.push_line(state.command_bar_completions());
+    match state.mode() {
+        AppMode::Command => {
+            let mut command_bar_styled = state.command_bar_text();
+            command_bar_styled.push_line(state.command_bar_completions());
 
-    frame.render_widget(command_bar_styled, command_bar);
+            frame.render_widget(command_bar_styled, command_bar);
+        }
+        AppMode::FiltersMenu => {
+            let (info_lines, table, mut table_state) = state.filters.filters_menu_text();
+
+            let table_area = Rect::new(
+                command_bar.x,
+                command_bar.y + state.filters.filters_menu_info_lines_size() as u16,
+                command_bar.width,
+                command_bar.height - 1,
+            );
+            frame.render_widget(info_lines, command_bar);
+            table.render(table_area, frame.buffer_mut(), &mut table_state);
+        }
+        AppMode::Logs => (),
+    }
 
     let b = Block::new().borders(Borders::RIGHT);
     frame.render_widget(&b, main_area);
