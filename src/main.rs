@@ -9,6 +9,7 @@ use app_state::{AppMode, AppState};
 use crossterm::event;
 use error::Result;
 use log_file::LogFile;
+use num_format::ToFormattedString;
 use ratatui::{
     layout::{Constraint, Layout, Rect},
     text::{Line, Text},
@@ -64,26 +65,42 @@ fn run(mut terminal: DefaultTerminal, args: Args) -> Result<()> {
 }
 
 fn render(frame: &mut Frame, state: &mut AppState) {
-    use Constraint::{Length, Min};
+    use Constraint::{Length, Min, Percentage};
 
     let vertical = Layout::vertical([
         Length(1),
         Min(3),
         Length(1),
-        // Min(2),
         Length(state.state_bar_text_number_of_lines() as u16),
     ]);
     let [title_bar, main_area, status_area, command_bar] = vertical.areas(frame.area());
 
+    let [left_status_area, right_status_area] =
+        Layout::horizontal([Percentage(80), Percentage(20)]).areas(status_area);
+
     frame.render_widget(
         Line::styled(
             format!(
-                "{} filters are currently active",
-                state.filters.total_filters_enabled()
+                " L{}",
+                (state.get_line_offset() + 1).to_formatted_string(&num_format::Locale::en),
             ),
-            (ratatui::style::Color::Gray, ratatui::style::Color::DarkGray),
+            (
+                ratatui::style::Color::White,
+                ratatui::style::Color::DarkGray,
+            ),
         ),
-        status_area,
+        left_status_area,
+    );
+
+    frame.render_widget(
+        Line::styled(
+            "?:View Help",
+            (
+                ratatui::style::Color::White,
+                ratatui::style::Color::DarkGray,
+            ),
+        ),
+        right_status_area,
     );
 
     match state.mode() {

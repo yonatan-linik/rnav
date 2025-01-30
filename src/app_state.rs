@@ -85,6 +85,10 @@ impl<'a> AppState<'a> {
         self.commands.command_bar_text(self.mode)
     }
 
+    pub fn get_line_offset(&self) -> usize {
+        self.line_offset
+    }
+
     fn split_keep<'b>(
         r: &regex::Regex,
         text: &'b str,
