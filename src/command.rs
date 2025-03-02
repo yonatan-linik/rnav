@@ -1,50 +1,76 @@
+use std::collections::HashMap;
+
 use crate::app_state::AppMode;
 use crate::error::{Error, Result};
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use ratatui::style::{Color, Modifier, Stylize as _};
 use ratatui::text::{Line, Span, Text};
-use strum::EnumIter;
-use strum::IntoEnumIterator;
+use strum::EnumCount;
 
-#[derive(Debug, EnumIter, Copy, Clone)]
-pub enum CommandType {
-    FilterIn,
-    FilterOut,
-    Highlight,
+#[derive(Debug, EnumCount, Clone)]
+pub enum Command {
+    FilterIn(regex::Regex),
+    FilterOut(regex::Regex),
+    Highlight(regex::Regex),
 }
 
-impl std::str::FromStr for CommandType {
+thread_local! {
+    static COMMAND_NAMES: std::cell::LazyCell<[&'static str; Command::COUNT]> =
+        std::cell::LazyCell::new(|| ["filter-in", "filter-out", "highlight"]);
+}
+
+type CommandBuilder = dyn Fn(regex::Regex) -> Command;
+
+impl std::str::FromStr for Command {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self> {
-        match s {
-            "filter-in" => Ok(CommandType::FilterIn),
-            "filter-out" => Ok(CommandType::FilterOut),
-            "highlight" => Ok(CommandType::Highlight),
-            _ => Err(Error::UnknownCommand(s.to_string())),
+        let map: [(&str, Box<CommandBuilder>); Command::COUNT] = [
+            ("filter-in", Box::new(Command::FilterIn)),
+            ("filter-out", Box::new(Command::FilterOut)),
+            ("highlight", Box::new(Command::Highlight)),
+        ];
+
+        let map: HashMap<&str, Box<dyn Fn(regex::Regex) -> Command>> = HashMap::from(map);
+
+        let (command, args) = s
+            .trim()
+            .split_once(|c: char| c.is_whitespace())
+            .unwrap_or((s.trim(), ""));
+
+        let build_command = map
+            .get(command)
+            .ok_or_else(|| Error::UnknownCommand(command.to_string()))?;
+
+        // Currently all commands need arguments
+        if args.is_empty() {
+            return Err(Error::NoArgumentsGivenToCommand);
         }
+
+        let r = regex::Regex::new(args)?;
+
+        Ok(build_command(r))
     }
 }
 
-impl From<CommandType> for &'static str {
-    fn from(command: CommandType) -> Self {
+impl From<&Command> for &'static str {
+    fn from(command: &Command) -> Self {
         match command {
-            CommandType::FilterIn => "filter-in",
-            CommandType::FilterOut => "filter-out",
-            CommandType::Highlight => "highlight",
+            Command::FilterIn(_) => "filter-in",
+            Command::FilterOut(_) => "filter-out",
+            Command::Highlight(_) => "highlight",
         }
     }
 }
 
-impl CommandType {
-    fn as_str(&self) -> &'static str {
-        (*self).into()
-    }
-
+impl Command {
     pub fn auto_complete(prefix: &str) -> (Option<String>, Vec<&'static str>) {
-        let completions: Vec<&'static str> = CommandType::iter()
-            .filter_map(|c| c.as_str().starts_with(prefix).then_some(c.as_str()))
-            .collect();
+        let completions: Vec<&'static str> = COMMAND_NAMES.with(|names| {
+            names
+                .iter()
+                .filter_map(|&c| c.starts_with(prefix).then_some(c))
+                .collect()
+        });
 
         let longest_common_prefix =
             completions
@@ -64,34 +90,6 @@ impl CommandType {
                 });
 
         (longest_common_prefix, completions)
-    }
-}
-
-pub struct Command {
-    pub cmd_type: CommandType,
-    pub args: String,
-}
-
-impl std::str::FromStr for Command {
-    type Err = Error;
-
-    fn from_str(curr_cmd: &str) -> Result<Self> {
-        let (command, args) = curr_cmd
-            .trim()
-            .split_once(|c: char| c.is_whitespace())
-            .unwrap_or((curr_cmd.trim(), ""));
-
-        let cmd_type: CommandType = command.parse()?;
-
-        // Currently all commands need arguments
-        if args.is_empty() {
-            return Err(Error::NoArgumentsGivenToCommand);
-        }
-
-        Ok(Command {
-            cmd_type,
-            args: args.to_string(),
-        })
     }
 }
 
@@ -148,10 +146,6 @@ impl Commands {
         }
 
         text
-    }
-
-    pub fn set_command_error(&mut self, err: impl Into<String>) {
-        self.command_error = err.into();
     }
 
     pub fn read_event(&mut self, event: Event) -> (Option<AppMode>, Option<Command>) {
@@ -214,7 +208,7 @@ impl Commands {
                 ..
             }) => {
                 let (longest_common_prefix, completions) =
-                    CommandType::auto_complete(&self.current_command);
+                    Command::auto_complete(&self.current_command);
 
                 if let Some(prefix) = longest_common_prefix {
                     self.current_command = prefix;

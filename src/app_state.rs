@@ -7,8 +7,7 @@ use rand::Rng as _;
 use ratatui::style::{Color, Style, Stylize};
 use ratatui::text::{Line, Span, Text};
 
-use crate::command::{Command, CommandType, Commands};
-use crate::error::Result;
+use crate::command::{Command, Commands};
 use crate::filter::Filters;
 use crate::log_file::LogFile;
 use crate::log_line::LogLine;
@@ -254,26 +253,21 @@ impl<'a> AppState<'a> {
             .bg(bg_color)
     }
 
-    fn handle_command(&mut self, command: &Command) -> Result<()> {
-        match command.cmd_type {
-            CommandType::FilterIn => {
-                let r = regex::Regex::new(&command.args)?;
+    fn handle_command(&mut self, command: Command) {
+        match command {
+            Command::FilterIn(r) => {
                 self.filters.create_in_filter(r);
             }
-            CommandType::FilterOut => {
-                let r = regex::Regex::new(&command.args)?;
+            Command::FilterOut(r) => {
                 self.filters.create_out_filter(r);
             }
-            CommandType::Highlight => {
-                let r = regex::Regex::new(&command.args)?;
+            Command::Highlight(r) => {
                 self.highlights.push((
                     r,
                     Color::from_u32(rand::thread_rng().gen_range(255..=0x00FF_FFFF)),
                 ));
             }
         }
-
-        Ok(())
     }
 
     fn longest_filtered_log(&self) -> usize {
@@ -297,11 +291,7 @@ impl<'a> AppState<'a> {
                 let (new_mode, cmd) = self.commands.read_event(event);
                 self.mode = new_mode.unwrap_or(AppMode::Command);
                 if let Some(cmd) = cmd {
-                    if let Err(err) = self.handle_command(&cmd) {
-                        self.commands.set_command_error(format!("{err}"));
-                        // Stay in command mode for one more keystroke
-                        self.mode = AppMode::Command;
-                    }
+                    self.handle_command(cmd);
                 }
             }
             AppMode::FiltersMenu => {
