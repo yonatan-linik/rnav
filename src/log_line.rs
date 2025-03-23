@@ -33,10 +33,12 @@ impl<'a> LogLine<'a> {
     /// # use chrono::offset::FixedOffset;
     /// # use chrono::DateTime;
     /// # use chrono::TimeZone;
-    /// # std::fs::write("/tmp/test", "2021-08-01T12:00:00Z INFO Hello, world!
-    ///                                Wed, 18 Feb 2015 23:16:09 GMT Log contents").unwrap();
-    /// # let file = LogFile::new_with_random_color("/tmp/test".into());
-    /// # let contents = file.contents();
+    /// std::fs::write("/tmp/test",
+    ///                "2021-08-01T12:00:00Z INFO Hello, world!
+    ///                 Wed, 18 Feb 2015 23:16:09 GMT Log contents
+    ///                 18/Mar/2003:08:05:30 +0200 Unknown format").unwrap();
+    /// let file = LogFile::new_with_random_color("/tmp/test".into());
+    /// let contents = file.contents();
     /// let mut lines = contents.lines();
     /// // RFC3339 format
     /// assert_eq!(LogLine::new(&file, lines.next().unwrap()),
@@ -59,7 +61,9 @@ impl<'a> LogLine<'a> {
     ///                         })
     ///           );
     /// // Unknown format
-    /// assert_eq!(LogLine::new(&file, "18/Mar/2003:08:05:30 +0200 Unknown format"), None);
+    /// assert_eq!(LogLine::new(&file, lines.next().unwrap()), None);
+    ///
+    /// # std::fs::remove_file("/tmp/test").unwrap();
     /// ```
     pub fn new<S: AsRef<str> + ?Sized>(src_file: &'a LogFile, line: &'a S) -> Option<Self> {
         let log = line.as_ref().trim();

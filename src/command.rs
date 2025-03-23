@@ -154,6 +154,9 @@ impl Commands {
             return (Some(AppMode::Logs), None);
         }
 
+        // When a key is pressed, clear command completions
+        self.command_completions.clear();
+
         match event {
             Event::Key(KeyEvent {
                 code: KeyCode::Char(c),

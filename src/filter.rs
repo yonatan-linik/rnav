@@ -9,6 +9,8 @@ use regex::Regex;
 
 use crate::app_state::{AppAction, AppMode};
 
+const MAX_FILTERS_TABLE_ROWS_DISPLAYED: usize = 5;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FilterKind {
     In,
@@ -118,7 +120,9 @@ impl Filters {
     }
 
     pub fn filters_menu_size(&self) -> usize {
-        self.filters.len() + self.filters_menu_info_lines_size()
+        // Don't display all filters if there are too many
+        self.filters.len().min(MAX_FILTERS_TABLE_ROWS_DISPLAYED)
+            + self.filters_menu_info_lines_size()
     }
 
     fn filters_menu_info_lines(&self) -> Text<'_> {
