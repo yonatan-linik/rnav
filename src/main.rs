@@ -1,14 +1,12 @@
 mod app_state;
-mod command;
 mod error;
-mod filter;
-mod log_file;
-mod log_line;
+mod log;
+mod mode;
 
 use app_state::{AppMode, AppState};
 use crossterm::event;
 use error::Result;
-use log_file::LogFile;
+use log::log_file::LogFile;
 use num_format::ToFormattedString;
 use ratatui::{
     layout::{Constraint, Layout, Rect},

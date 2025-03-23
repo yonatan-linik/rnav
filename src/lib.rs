@@ -1,4 +1,3 @@
-pub mod log_file;
-pub mod log_line;
+pub mod log;
 
-pub use log_line::LogLine;
+pub use log::log_line::LogLine;

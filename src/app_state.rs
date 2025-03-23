@@ -7,10 +7,10 @@ use rand::Rng as _;
 use ratatui::style::{Color, Style, Stylize};
 use ratatui::text::{Line, Span, Text};
 
-use crate::command::{Command, Commands};
-use crate::filter::Filters;
-use crate::log_file::LogFile;
-use crate::log_line::LogLine;
+use crate::log::log_file::LogFile;
+use crate::log::log_line::LogLine;
+use crate::mode::command::{Command, Commands};
+use crate::mode::filter::Filters;
 
 pub enum AppAction {
     EndApp,
@@ -41,14 +41,10 @@ impl<'a> AppState<'a> {
         let mut lines: Vec<_> = files
             .iter()
             .flat_map(|src_file| {
-                src_file.contents().lines().map(|l| {
-                    LogLine::new(src_file, l).unwrap_or_else(|| LogLine {
-                        src_file,
-                        time: chrono::DateTime::<chrono::Utc>::MAX_UTC.fixed_offset(),
-                        log: l,
-                        marked: false,
-                    })
-                })
+                src_file
+                    .contents()
+                    .lines()
+                    .map(|l| LogLine::new(src_file, l))
             })
             .collect();
         lines.sort_by(|a, b| a.time.cmp(&b.time));
@@ -239,7 +235,7 @@ impl<'a> AppState<'a> {
         let log_text = Span::styled(" LOG ", (Color::White, l.src_file.color));
 
         let log_time = if l.time == chrono::DateTime::<chrono::Utc>::MAX_UTC.fixed_offset() {
-            Span::raw("⟩")
+            Span::raw("⟩Unknown time⟩")
         } else {
             Span::raw(format!("⟩{}⟩", l.time.to_rfc3339()))
         };
@@ -248,9 +244,18 @@ impl<'a> AppState<'a> {
 
         let bg_color = Color::Rgb(40, 40, 40);
 
-        Line::from_iter([log_text, log_time, log_file_name])
-            .fg(Color::Gray)
-            .bg(bg_color)
+        let log_level_title = Span::raw(" Level: ");
+        let log_level = l.level.into();
+
+        Line::from_iter([
+            log_text,
+            log_level_title,
+            log_level,
+            log_time,
+            log_file_name,
+        ])
+        .fg(Color::Gray)
+        .bg(bg_color)
     }
 
     fn handle_command(&mut self, command: Command) {
