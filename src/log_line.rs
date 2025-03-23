@@ -2,13 +2,24 @@ use chrono::{DateTime, FixedOffset};
 
 use crate::log_file::LogFile;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct LogLine<'a> {
     pub src_file: &'a LogFile,
     pub time: DateTime<FixedOffset>,
     pub log: &'a str,
     pub marked: bool,
 }
+
+impl PartialEq for LogLine<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.src_file.name == other.src_file.name
+            && self.time == other.time
+            && self.log == other.log
+            && self.marked == other.marked
+    }
+}
+
+impl Eq for LogLine<'_> {}
 
 impl<'a> LogLine<'a> {
     /// Tries to construct a `LogLine` from a line of text.
@@ -22,9 +33,13 @@ impl<'a> LogLine<'a> {
     /// # use chrono::offset::FixedOffset;
     /// # use chrono::DateTime;
     /// # use chrono::TimeZone;
-    /// # let file = LogFile::new_with_random_color("test".into(), "test".into());
+    /// # std::fs::write("/tmp/test", "2021-08-01T12:00:00Z INFO Hello, world!
+    ///                                Wed, 18 Feb 2015 23:16:09 GMT Log contents").unwrap();
+    /// # let file = LogFile::new_with_random_color("/tmp/test".into());
+    /// # let contents = file.contents();
+    /// let mut lines = contents.lines();
     /// // RFC3339 format
-    /// assert_eq!(LogLine::new(&file, "2021-08-01T12:00:00Z INFO Hello, world!"),
+    /// assert_eq!(LogLine::new(&file, lines.next().unwrap()),
     ///            Some(LogLine { src_file: &file,
     ///                           time: FixedOffset::east_opt(0)
     ///                             .unwrap()
@@ -34,7 +49,7 @@ impl<'a> LogLine<'a> {
     ///                         })
     ///           );
     /// // RFC2822 format
-    /// assert_eq!(LogLine::new(&file, "Wed, 18 Feb 2015 23:16:09 GMT Log contents"),
+    /// assert_eq!(LogLine::new(&file, lines.next().unwrap()),
     ///            Some(LogLine { src_file: &file,
     ///                           time: FixedOffset::east_opt(0)
     ///                             .unwrap()
@@ -47,7 +62,7 @@ impl<'a> LogLine<'a> {
     /// assert_eq!(LogLine::new(&file, "18/Mar/2003:08:05:30 +0200 Unknown format"), None);
     /// ```
     pub fn new<S: AsRef<str> + ?Sized>(src_file: &'a LogFile, line: &'a S) -> Option<Self> {
-        let log = line.as_ref();
+        let log = line.as_ref().trim();
         let end_of_rfc2822_time_index = log
             .find('+')
             .map(|i| i + 5)

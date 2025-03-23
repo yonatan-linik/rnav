@@ -44,13 +44,7 @@ fn run(mut terminal: DefaultTerminal, args: Args) -> Result<()> {
     let files: Vec<_> = args
         .file_names
         .iter()
-        .map(|n| {
-            LogFile::new_with_random_color(
-                n.as_str().into(),
-                String::from_utf8(std::fs::read(n).expect("Can read file"))
-                    .expect("File is a valid utf-8 text file"),
-            )
-        })
+        .map(|n| LogFile::new_with_random_color(n.as_str().into()))
         .collect();
 
     let mut state = AppState::new(&files);

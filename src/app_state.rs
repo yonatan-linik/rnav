@@ -41,7 +41,7 @@ impl<'a> AppState<'a> {
         let mut lines: Vec<_> = files
             .iter()
             .flat_map(|src_file| {
-                src_file.contents.lines().map(|l| {
+                src_file.contents().lines().map(|l| {
                     LogLine::new(src_file, l).unwrap_or_else(|| LogLine {
                         src_file,
                         time: chrono::DateTime::<chrono::Utc>::MAX_UTC.fixed_offset(),
@@ -142,14 +142,14 @@ impl<'a> AppState<'a> {
             .map(|l| self.apply_highlights_to_line(l))
     }
 
-    fn filter_all_lines_iter(&'a self) -> impl IntoIterator<Item = (usize, &LogLine<'a>)> {
+    fn filter_all_lines_iter(&'a self) -> impl IntoIterator<Item = (usize, &'a LogLine<'a>)> {
         self.lines
             .iter()
             .enumerate()
             .filter(|(_, l)| self.filters.keep_line(l.log))
     }
 
-    fn filter_lines_iter(&'a self) -> impl IntoIterator<Item = (usize, &LogLine<'a>)> {
+    fn filter_lines_iter(&'a self) -> impl IntoIterator<Item = (usize, &'a LogLine<'a>)> {
         self.filter_all_lines_iter()
             .into_iter()
             .skip(self.line_offset)
@@ -178,7 +178,7 @@ impl<'a> AppState<'a> {
         let lines = self
             .filter_lines_iter()
             .into_iter()
-            .map(|(_, l)| l.src_file.clone());
+            .map(|(_, l)| l.src_file);
 
         let max_file_name_length = self.file_names.iter().map(|n| n.len()).max().unwrap_or(0);
 
