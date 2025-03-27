@@ -5,7 +5,7 @@ use crate::log::log_level::LogLevel;
 
 thread_local! {
     static LOG_LEVEL_REGEX: std::cell::LazyCell<regex::Regex> =
-        std::cell::LazyCell::new(|| regex::Regex::new(r"([^\w]|^)(?<level>ERR|ERROR|WARN|WARNING)([^\w]|$)")
+        std::cell::LazyCell::new(|| regex::Regex::new(r"([^\w]|^)(?<level>TRACE|DEBUG|INFO|ERR|ERROR|WARN|WARNING|NOTICE|CRIT|CRITICAL)([^\w]|$)")
             .expect("Legal regex"));
 }
 

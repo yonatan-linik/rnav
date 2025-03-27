@@ -244,7 +244,7 @@ impl<'a> AppState<'a> {
 
         let bg_color = Color::Rgb(40, 40, 40);
 
-        let log_level_title = Span::raw(" Level: ");
+        let log_level_title = Span::raw(" Level:");
         let log_level = l.level.into();
 
         Line::from_iter([
