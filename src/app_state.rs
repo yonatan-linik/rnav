@@ -34,6 +34,7 @@ pub struct AppState<'a> {
     mode: AppMode,
     highlights: Vec<(regex::Regex, Color)>,
     show_file_names: bool,
+    word_wrapping: bool,
 }
 
 impl<'a> AppState<'a> {
@@ -61,6 +62,7 @@ impl<'a> AppState<'a> {
             show_file_names: false,
             file_names,
             commands: Commands::new(),
+            word_wrapping: false,
         }
     }
 
@@ -272,6 +274,7 @@ impl<'a> AppState<'a> {
                     Color::from_u32(rand::thread_rng().gen_range(255..=0x00FF_FFFF)),
                 ));
             }
+            Command::ToggleWrapping => self.word_wrapping = !self.word_wrapping,
         }
     }
 
@@ -397,5 +400,9 @@ impl<'a> AppState<'a> {
         };
 
         self.lines[i].marked = !self.lines[i].marked;
+    }
+
+    pub fn wrapping(&self) -> bool {
+        self.word_wrapping
     }
 }

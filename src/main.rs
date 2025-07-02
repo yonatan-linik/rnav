@@ -11,7 +11,7 @@ use num_format::ToFormattedString;
 use ratatui::{
     layout::{Constraint, Layout, Rect},
     text::{Line, Text},
-    widgets::{Block, Borders, StatefulWidget},
+    widgets::{Block, Borders, Paragraph, StatefulWidget, Wrap},
     DefaultTerminal, Frame,
 };
 
@@ -116,7 +116,11 @@ fn render(frame: &mut Frame, state: &mut AppState) {
 
     let b = Block::new().borders(Borders::RIGHT);
     frame.render_widget(&b, main_area);
-    frame.render_widget(Text::from_iter(state.lines_iter()), b.inner(main_area));
+    let mut logs = Paragraph::new(Text::from_iter(state.lines_iter()));
+    if state.wrapping() {
+        logs = logs.wrap(Wrap { trim: false })
+    }
+    frame.render_widget(logs, b.inner(main_area));
 
     frame.render_widget(state.top_log_line_title_bar_text(), title_bar);
 }

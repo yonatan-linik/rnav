@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use crate::app_state::AppMode;
 use crate::error::{Error, Result};
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
@@ -12,37 +10,31 @@ pub enum Command {
     FilterIn(regex::Regex),
     FilterOut(regex::Regex),
     Highlight(regex::Regex),
+    ToggleWrapping,
 }
 
 thread_local! {
     static COMMAND_NAMES: std::cell::LazyCell<[&'static str; Command::COUNT]> =
-        std::cell::LazyCell::new(|| ["filter-in", "filter-out", "highlight"]);
+        std::cell::LazyCell::new(|| ["filter-in", "filter-out", "highlight", "toggle-wrapping"]);
 }
-
-type CommandBuilder = dyn Fn(regex::Regex) -> Command;
 
 impl std::str::FromStr for Command {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self> {
-        let map: [(&str, Box<CommandBuilder>); Command::COUNT] = [
-            ("filter-in", Box::new(Command::FilterIn)),
-            ("filter-out", Box::new(Command::FilterOut)),
-            ("highlight", Box::new(Command::Highlight)),
-        ];
-
-        let map: HashMap<&str, Box<dyn Fn(regex::Regex) -> Command>> = HashMap::from(map);
-
         let (command, args) = s
             .trim()
             .split_once(|c: char| c.is_whitespace())
             .unwrap_or((s.trim(), ""));
 
-        let build_command = map
-            .get(command)
-            .ok_or_else(|| Error::UnknownCommand(command.to_string()))?;
+        let build_command = match command {
+            "toggle-wrapping" => return Ok(Command::ToggleWrapping),
+            "filter-in" => Command::FilterIn,
+            "filter-out" => Command::FilterOut,
+            "highlight" => Command::Highlight,
+            _ => return Err(Error::UnknownCommand(command.to_string())),
+        };
 
-        // Currently all commands need arguments
         if args.is_empty() {
             return Err(Error::NoArgumentsGivenToCommand);
         }
@@ -59,6 +51,7 @@ impl From<&Command> for &'static str {
             Command::FilterIn(_) => "filter-in",
             Command::FilterOut(_) => "filter-out",
             Command::Highlight(_) => "highlight",
+            Command::ToggleWrapping => "toggle-wrapping",
         }
     }
 }
