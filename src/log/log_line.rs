@@ -47,7 +47,7 @@ impl<'a> LogLine<'a> {
     ///                "2021-08-01T12:00:00Z INFO Hello, world!
     ///                 Wed, 18 Feb 2015 23:16:09 GMT ERROR Log contents
     ///                 18/Mar/2003:08:05:30 +0200 Unknown format").unwrap();
-    /// let file = LogFile::new_with_random_color("/tmp/test".into());
+    /// let file = LogFile::new("/tmp/test".into());
     /// let contents = file.contents();
     /// let mut lines = contents.lines();
     /// // RFC3339 format

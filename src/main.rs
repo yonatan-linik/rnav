@@ -42,7 +42,7 @@ fn run(mut terminal: DefaultTerminal, args: Args) -> Result<()> {
     let files: Vec<_> = args
         .file_names
         .iter()
-        .map(|n| LogFile::new_with_random_color(n.as_str().into()))
+        .map(|n| LogFile::new(n.as_str().into()))
         .collect();
 
     let mut state = AppState::new(&files);
