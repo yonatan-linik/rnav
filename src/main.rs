@@ -74,7 +74,7 @@ fn render(frame: &mut Frame, state: &mut AppState) {
         Line::styled(
             format!(
                 " L{}",
-                (state.get_absolute_line_offset() + 1).to_formatted_string(&num_format::Locale::en),
+                (state.get_line_offset() + 1).to_formatted_string(&num_format::Locale::en),
             ),
             (
                 ratatui::style::Color::White,
