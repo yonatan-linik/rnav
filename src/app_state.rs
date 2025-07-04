@@ -370,6 +370,12 @@ impl<'a> AppState<'a> {
                                 KeyCode::Char('m') => {
                                     self.flip_mark_of_top_log_line();
                                 }
+                                KeyCode::Char('U') => {
+                                    self.goto_prev_mark();
+                                }
+                                KeyCode::Char('u') => {
+                                    self.goto_next_mark();
+                                }
                                 KeyCode::Tab => {
                                     self.mode = AppMode::FiltersMenu;
                                 }
@@ -404,5 +410,34 @@ impl<'a> AppState<'a> {
 
     pub fn wrapping(&self) -> bool {
         self.word_wrapping
+    }
+
+    fn goto_prev_mark(&mut self) {
+        let offset = self
+            .filter_all_lines_iter()
+            .into_iter()
+            .enumerate()
+            .take(self.line_offset)
+            .filter(|(_, line)| line.1.marked)
+            .map(|(i, _)| i)
+            .last()
+            .unwrap_or(self.line_offset);
+
+        self.line_offset = offset;
+    }
+
+    fn goto_next_mark(&mut self) {
+        let Some(offset) = self
+            .filter_lines_iter()
+            .into_iter()
+            .skip(1)
+            .enumerate()
+            .find(|(_, line)| line.1.marked)
+            .map(|(i, _)| i)
+        else {
+            return;
+        };
+
+        self.line_offset += offset + 1;
     }
 }
