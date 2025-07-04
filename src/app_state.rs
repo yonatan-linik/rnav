@@ -82,8 +82,12 @@ impl<'a> AppState<'a> {
         self.commands.command_bar_text(self.mode)
     }
 
-    pub fn get_line_offset(&self) -> usize {
-        self.line_offset
+    pub fn get_absolute_line_offset(&self) -> usize {
+        self.filter_lines_iter()
+            .into_iter()
+            .next()
+            .map(|(i, _)| i)
+            .unwrap_or(0)
     }
 
     fn split_keep<'b>(
