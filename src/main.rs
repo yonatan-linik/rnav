@@ -49,7 +49,7 @@ fn run(mut terminal: DefaultTerminal, args: Args) -> Result<()> {
     loop {
         terminal.draw(|f| render(f, &mut state))?;
         let event = event::read()?;
-        match state.read_event(event) {
+        match state.read_event(event, &terminal) {
             app_state::AppAction::EndApp => break Ok(()),
             app_state::AppAction::NoAction => continue,
         }
@@ -74,7 +74,7 @@ fn render(frame: &mut Frame, state: &mut AppState) {
         Line::styled(
             format!(
                 " L{}",
-                (state.get_absolute_line_offset() + 1).to_formatted_string(&num_format::Locale::en),
+                (state.get_line_offset() + 1).to_formatted_string(&num_format::Locale::en),
             ),
             (
                 ratatui::style::Color::White,

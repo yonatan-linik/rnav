@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::iter::once;
 use std::sync::Arc;
 
@@ -48,7 +49,11 @@ impl<'a> AppState<'a> {
                     .map(|l| LogLine::new(src_file, l))
             })
             .collect();
-        lines.sort_by(|a, b| a.time.cmp(&b.time));
+        // Keep the lines order inside the same file, only order by time between files
+        lines.sort_by(|a, b| match a.src_file.name.cmp(&b.src_file.name) {
+            Ordering::Equal => Ordering::Equal,
+            _ => a.time.cmp(&b.time),
+        });
 
         let file_names = files.iter().map(|f| f.name.clone()).collect();
 
@@ -70,6 +75,14 @@ impl<'a> AppState<'a> {
         self.mode
     }
 
+    fn reset_session(&mut self) {
+        self.filters.clear();
+        self.highlights.clear();
+        self.lines.iter_mut().for_each(|line| {
+            line.marked = false;
+        });
+    }
+
     pub fn state_bar_text_number_of_lines(&self) -> usize {
         match self.mode {
             AppMode::Command => self.commands.command_bar_text(self.mode).lines.len(),
@@ -82,12 +95,8 @@ impl<'a> AppState<'a> {
         self.commands.command_bar_text(self.mode)
     }
 
-    pub fn get_absolute_line_offset(&self) -> usize {
-        self.filter_lines_iter()
-            .into_iter()
-            .next()
-            .map(|(i, _)| i)
-            .unwrap_or(0)
+    pub fn get_line_offset(&self) -> usize {
+        self.line_offset
     }
 
     fn split_keep<'b>(
@@ -290,7 +299,11 @@ impl<'a> AppState<'a> {
             .unwrap_or(0)
     }
 
-    pub fn read_event(&mut self, event: Event) -> AppAction {
+    pub fn read_event(
+        &mut self,
+        event: Event,
+        terminal: &ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
+    ) -> AppAction {
         if matches!(event, Event::Resize(_, _)) {
             return AppAction::NoAction;
         }
@@ -354,12 +367,35 @@ impl<'a> AppState<'a> {
                                 KeyCode::Down | KeyCode::Char('j') => {
                                     self.line_offset = self.line_offset.saturating_add(1)
                                 }
+                                KeyCode::Char('g') => {
+                                    self.line_offset = 0;
+                                }
+                                KeyCode::Char('G') => {
+                                    self.line_offset =
+                                        self.filtered_lines_count().saturating_sub(1);
+                                }
+                                KeyCode::PageDown | KeyCode::PageUp => {
+                                    let page_size = terminal
+                                        .size()
+                                        .expect("Should be able to get terminal size")
+                                        .height
+                                        // 2 Lines for header and footer + 1 so you have an overlapping line from previous page
+                                        .saturating_sub(3)
+                                        as usize;
+
+                                    self.line_offset = if KeyCode::PageDown == key.code {
+                                        self.line_offset.saturating_add(page_size)
+                                    } else {
+                                        self.line_offset.saturating_sub(page_size)
+                                    };
+                                }
                                 // KeyCode::Char(c) => app.on_key(c),
                                 _ => (),
                             };
 
-                            self.line_offset =
-                                self.line_offset.min(self.filtered_lines_count() - 1);
+                            self.line_offset = self
+                                .line_offset
+                                .min(self.filtered_lines_count().saturating_sub(1));
 
                             match key.code {
                                 KeyCode::Char(':') => {
@@ -368,8 +404,7 @@ impl<'a> AppState<'a> {
                                 KeyCode::Char('r')
                                     if key.modifiers.contains(KeyModifiers::CONTROL) =>
                                 {
-                                    self.filters.clear();
-                                    self.highlights.clear();
+                                    self.reset_session();
                                 }
                                 KeyCode::Char('m') => {
                                     self.flip_mark_of_top_log_line();
