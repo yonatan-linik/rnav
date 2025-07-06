@@ -137,8 +137,7 @@ impl Filters {
 
         let enabled = Line::styled(
             format!(
-                "Text filters: {} of {} enabled {}",
-                enabled_filters, total_filters, filtering_disabled_text
+                "Text filters: {enabled_filters} of {total_filters} enabled {filtering_disabled_text}",
             ),
             (Color::White, Color::DarkGray),
         );

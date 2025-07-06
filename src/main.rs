@@ -49,7 +49,7 @@ fn run(mut terminal: DefaultTerminal, args: Args) -> Result<()> {
     loop {
         terminal.draw(|f| render(f, &mut state))?;
         let event = event::read()?;
-        match state.read_event(event) {
+        match state.read_event(event, &terminal) {
             app_state::AppAction::EndApp => break Ok(()),
             app_state::AppAction::NoAction => continue,
         }
