@@ -308,6 +308,14 @@ impl<'a> AppState<'a> {
             return AppAction::NoAction;
         }
 
+        if let Event::Key(KeyEvent {
+            kind: KeyEventKind::Release,
+            ..
+        }) = event
+        {
+            return AppAction::NoAction;
+        }
+
         let shown_lines_count = self.filtered_lines_count();
         self.line_offset = self.line_offset.min(shown_lines_count - 1);
 
