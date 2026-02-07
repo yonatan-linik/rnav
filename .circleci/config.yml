@@ -9,15 +9,25 @@ jobs:
       - image: cimg/rust:1.49.0
     steps:
       - checkout
+      - restore_cache:
+          keys:
+            - cargo-v1-{{ checksum "Cargo.lock" }}
       - rust/install
       - rust/build:
           crate: .
           release: true
+      - save_cache:
+          key: cargo-v1-{{ checksum "Cargo.lock" }}
+          paths:
+            - ~/.cargo
   test:
     docker:
       - image: cimg/rust:1.49.0
     steps:
       - checkout
+      - restore_cache:
+          keys:
+            - cargo-v1-{{ checksum "Cargo.lock" }}
       - rust/install
       - rust/test:
           package: .
