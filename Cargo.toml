@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT"
 readme = "README.md"
+description = "Terminal log navigator"
 repository = "https://github.com/yonatan-linik/rnav"
 keywords = ["log", "tui", "viewer", "navigator"]
 categories = ["command-line-utilities", "filesystem", "text-processing"]
