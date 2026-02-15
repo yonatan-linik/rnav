@@ -16,6 +16,7 @@ pub struct LogLine<'a> {
     pub log: &'a str,
     pub level: LogLevel,
     pub marked: bool,
+    pub comment: Option<String>,
 }
 
 impl PartialEq for LogLine<'_> {
@@ -24,6 +25,7 @@ impl PartialEq for LogLine<'_> {
             && self.time == other.time
             && self.log == other.log
             && self.marked == other.marked
+            && self.comment == other.comment
     }
 }
 
@@ -59,7 +61,8 @@ impl<'a> LogLine<'a> {
     ///                            .unwrap(),
     ///                      log: "2021-08-01T12:00:00Z INFO Hello, world!",
     ///                      level: LogLevel::Unknown,
-    ///                      marked: false
+    ///                      marked: false,
+    ///                      comment: None
     ///                    }
     ///           );
     /// // RFC2822 format
@@ -71,7 +74,8 @@ impl<'a> LogLine<'a> {
     ///                            .unwrap(),
     ///                      log: "Wed, 18 Feb 2015 23:16:09 GMT ERROR Log contents",
     ///                      level: LogLevel::Error,
-    ///                      marked: false
+    ///                      marked: false,
+    ///                      comment: None
     ///                    }
     ///           );
     /// // Unknown time format
@@ -80,7 +84,8 @@ impl<'a> LogLine<'a> {
     ///                      time: DateTime::<Utc>::MAX_UTC.fixed_offset(),
     ///                      log: "18/Mar/2003:08:05:30 +0200 Unknown format",
     ///                      level: LogLevel::Unknown,
-    ///                      marked: false
+    ///                      marked: false,
+    ///                      comment: None
     ///                    }
     ///           );
     ///
@@ -123,6 +128,7 @@ impl<'a> LogLine<'a> {
             log,
             level,
             marked: false,
+            comment: None,
         }
     }
 }
