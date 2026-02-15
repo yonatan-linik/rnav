@@ -80,6 +80,7 @@ impl<'a> AppState<'a> {
         self.highlights.clear();
         self.lines.iter_mut().for_each(|line| {
             line.marked = false;
+            line.comment = None;
         });
     }
 
@@ -120,10 +121,10 @@ impl<'a> AppState<'a> {
         result
     }
 
-    fn apply_highlights_to_line(&'a self, log_line: Span<'a>) -> Line<'a> {
+    fn apply_highlights_to_line(&'a self, span: Span<'a>) -> Line<'a> {
         // If the log line is marked make sure it is for the entire line
-        let bg_color = log_line.style.bg.unwrap_or_default();
-        let mut spans: Box<dyn Iterator<Item = Span<'a>>> = Box::new(once(log_line));
+        let bg_color = span.style.bg.unwrap_or_default();
+        let mut spans: Box<dyn Iterator<Item = Span<'a>>> = Box::new(once(span));
 
         for (regex, color) in &self.highlights {
             let new_spans: Box<dyn Iterator<Item = Span<'a>>> = Box::new(
@@ -150,7 +151,7 @@ impl<'a> AppState<'a> {
     ) -> impl IntoIterator<Item = Line<'a>> + 'a {
         log_lines
             .into_iter()
-            .map(|l| self.apply_highlights_to_line(l))
+            .map(|s| self.apply_highlights_to_line(s))
     }
 
     fn filter_all_lines_iter(&'a self) -> impl IntoIterator<Item = (usize, &'a LogLine<'a>)> {
@@ -225,20 +226,58 @@ impl<'a> AppState<'a> {
             })
     }
 
+    fn render_comment_line(&'a self, comment: String, max_file_name_length: usize) -> Line<'a> {
+        // Build the file-name-column padding for comment lines so comments do not influence
+        // the range marker logic. Keep the prefix ' └ ' unstyled and only style the comment content.
+        // The comment background must NOT inherit mark backgrounds; always use the default bg here.
+        let file_span_comment = if !self.show_file_names {
+            // single-space placeholder when file names are hidden
+            Span::raw(" ")
+        } else {
+            // padded empty column matching file name width
+            Span::raw(format!("{:width$}", "", width = max_file_name_length))
+        };
+
+        let comment_prefix = Span::raw("└ ");
+        let comment_span = Span::styled(comment, Color::Green);
+
+        Line::from_iter(
+            once(file_span_comment)
+                .chain(once(comment_prefix))
+                .chain(once(comment_span)),
+        )
+        .bg(Color::default())
+    }
+
     pub fn lines_iter(&'a self) -> impl IntoIterator<Item = Line<'a>> + 'a {
-        let filtered_lines = self.filter_lines_iter().into_iter().map(|(_, l)| l.clone());
+        // Keep everything lazy: create two clones of the filtered log lines stream.
+        let filtered_for_render = self.filter_lines_iter().into_iter().map(|(_, l)| l.clone());
 
-        let marked_lines = self.apply_marks_and_offset(filtered_lines);
+        let filtered_for_comments = self
+            .filter_lines_iter()
+            .into_iter()
+            .map(|(_, l)| l.comment.clone());
 
+        let marked_lines = self.apply_marks_and_offset(filtered_for_render);
         let highlighted_lines = self.apply_highlights(marked_lines);
-
         let named_lines = self.filtered_lines_file_names();
 
+        // Precompute file name width for comment padding
+        let max_file_name_length = self.file_names.iter().map(|n| n.len()).max().unwrap_or(0);
+
+        // Zip name, highlighted line and comment (option) together and lazily emit one or two visual lines.
         named_lines
             .into_iter()
             .zip(highlighted_lines)
-            .map(|(f, h)| {
-                Line::from_iter(once(f).chain(h.spans)).bg(h.style.bg.unwrap_or_default())
+            .zip(filtered_for_comments)
+            .flat_map(move |((file_name, highlighted_line), comment_opt)| {
+                // main line
+                let log_line = Line::from_iter(once(file_name).chain(highlighted_line.spans))
+                    .bg(highlighted_line.style.bg.unwrap_or_default());
+
+                // optional comment line (do not affect range markers; use padding in file column)
+                once(log_line)
+                    .chain(comment_opt.map(|c| self.render_comment_line(c, max_file_name_length)))
             })
     }
 
@@ -288,6 +327,16 @@ impl<'a> AppState<'a> {
                 ));
             }
             Command::ToggleWrapping => self.word_wrapping = !self.word_wrapping,
+            Command::Comment(text) => {
+                if let Some(i) = self.top_log_line_index() {
+                    self.lines[i].comment = Some(text);
+                }
+            }
+            Command::ClearComment => {
+                if let Some(i) = self.top_log_line_index() {
+                    self.lines[i].comment = None;
+                }
+            }
         }
     }
 
@@ -447,8 +496,12 @@ impl<'a> AppState<'a> {
         AppAction::NoAction
     }
 
+    fn top_log_line_index(&self) -> Option<usize> {
+        self.filter_lines_iter().into_iter().next().map(|(i, _)| i)
+    }
+
     fn flip_mark_of_top_log_line(&mut self) {
-        let Some((i, _)) = self.filter_lines_iter().into_iter().next() else {
+        let Some(i) = self.top_log_line_index() else {
             return;
         };
 

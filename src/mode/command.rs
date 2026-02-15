@@ -3,45 +3,70 @@ use crate::error::{Error, Result};
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use ratatui::style::{Color, Modifier, Stylize as _};
 use ratatui::text::{Line, Span, Text};
+use regex::Regex;
 use strum::EnumCount;
 
 #[derive(Debug, EnumCount, Clone)]
 pub enum Command {
-    FilterIn(regex::Regex),
-    FilterOut(regex::Regex),
-    Highlight(regex::Regex),
+    FilterIn(Regex),
+    FilterOut(Regex),
+    Highlight(Regex),
     ToggleWrapping,
+    Comment(String),
+    ClearComment,
 }
 
 thread_local! {
     static COMMAND_NAMES: std::cell::LazyCell<[&'static str; Command::COUNT]> =
-        std::cell::LazyCell::new(|| ["filter-in", "filter-out", "highlight", "toggle-wrapping"]);
+        std::cell::LazyCell::new(|| ["filter-in", "filter-out", "highlight", "toggle-wrapping", "comment", "clear-comment"]);
 }
 
 impl std::str::FromStr for Command {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self> {
+        // Split into command and the rest (arguments). Keep the rest as-is (including spaces).
         let (command, args) = s
             .trim()
             .split_once(|c: char| c.is_whitespace())
             .unwrap_or((s.trim(), ""));
 
-        let build_command = match command {
-            "toggle-wrapping" => return Ok(Command::ToggleWrapping),
-            "filter-in" => Command::FilterIn,
-            "filter-out" => Command::FilterOut,
-            "highlight" => Command::Highlight,
-            _ => return Err(Error::UnknownCommand(command.to_string())),
-        };
-
-        if args.is_empty() {
-            return Err(Error::NoArgumentsGivenToCommand);
+        match command {
+            "toggle-wrapping" => Ok(Command::ToggleWrapping),
+            "filter-in" => {
+                if args.is_empty() {
+                    return Err(Error::NoArgumentsGivenToCommand);
+                }
+                let r = Regex::new(args)?;
+                Ok(Command::FilterIn(r))
+            }
+            "filter-out" => {
+                if args.is_empty() {
+                    return Err(Error::NoArgumentsGivenToCommand);
+                }
+                let r = Regex::new(args)?;
+                Ok(Command::FilterOut(r))
+            }
+            "highlight" => {
+                if args.is_empty() {
+                    return Err(Error::NoArgumentsGivenToCommand);
+                }
+                let r = Regex::new(args)?;
+                Ok(Command::Highlight(r))
+            }
+            "comment" => {
+                // For comment we want the entire remaining text as the comment (may contain spaces).
+                let comment = args.trim();
+                if comment.is_empty() {
+                    return Err(Error::NoArgumentsGivenToCommand);
+                }
+                Ok(Command::Comment(comment.to_string()))
+            }
+            "clear-comment" => {
+                Ok(Command::ClearComment)
+            }
+            _ => Err(Error::UnknownCommand(command.to_string())),
         }
-
-        let r = regex::Regex::new(args)?;
-
-        Ok(build_command(r))
     }
 }
 
@@ -52,6 +77,8 @@ impl From<&Command> for &'static str {
             Command::FilterOut(_) => "filter-out",
             Command::Highlight(_) => "highlight",
             Command::ToggleWrapping => "toggle-wrapping",
+            Command::Comment(_) => "comment",
+            Command::ClearComment => "clear-comment",
         }
     }
 }
