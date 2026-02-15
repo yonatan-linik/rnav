@@ -4,7 +4,6 @@ use std::sync::Arc;
 
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEventKind};
 use itertools::Itertools;
-use rand::Rng as _;
 use ratatui::style::{Color, Style, Stylize};
 use ratatui::text::{Line, Span, Text};
 
@@ -321,10 +320,8 @@ impl<'a> AppState<'a> {
                 self.filters.create_out_filter(r);
             }
             Command::Highlight(r) => {
-                self.highlights.push((
-                    r,
-                    Color::from_u32(rand::thread_rng().gen_range(255..=0x00FF_FFFF)),
-                ));
+                self.highlights
+                    .push((r, Color::from_u32(rand::random_range(255..=0x00FF_FFFF))));
             }
             Command::ToggleWrapping => self.word_wrapping = !self.word_wrapping,
             Command::Comment(text) => {
