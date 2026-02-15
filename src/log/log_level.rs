@@ -1,5 +1,5 @@
 use ratatui::{
-    style::{Color, Style, Stylize},
+    style::{Color, Style},
     text::Span,
 };
 

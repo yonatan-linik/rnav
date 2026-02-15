@@ -1,7 +1,7 @@
 [package]
 name = "rnav"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 license = "MIT"
 readme = "README.md"
 repository = "https://github.com/yonatan-linik/rnav"
@@ -14,15 +14,15 @@ test = true
 doctest = true
 
 [dependencies]
-chrono = "0.4.39"
-clap = { version = "4.5.26", features = ["derive"] }
-color-eyre = "0.6.3"
-crossterm = "0.28.1"
+chrono = "0.4.43"
+clap = { version = "4.5.58", features = ["derive"] }
+color-eyre = "0.6.5"
+crossterm = "0.29.0"
 itertools = "0.14.0"
 num-format = "0.4.4"
-rand = "0.8.5"
-ratatui = "0.29.0"
-regex = "1.11.1"
-strum = { version = "0.26.3", features = ["strum_macros"] }
-thiserror = "2.0.11"
+rand = "0.10.0"
+ratatui = "0.30.0"
+regex = "1.12.3"
+strum = { version = "0.27.2", features = ["strum_macros"] }
+thiserror = "2.0.18"
 memmap2 = "0.9"
