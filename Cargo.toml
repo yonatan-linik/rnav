@@ -9,6 +9,11 @@ repository = "https://github.com/yonatan-linik/rnav"
 keywords = ["log", "tui", "viewer", "navigator"]
 categories = ["command-line-utilities", "filesystem", "text-processing"]
 
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
+nursery = "warn"
+
 [lib]
 name = "rnav"
 test = true
