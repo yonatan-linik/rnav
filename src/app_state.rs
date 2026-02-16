@@ -8,6 +8,7 @@ use ratatui::style::{Color, Style, Stylize};
 use ratatui::text::{Line, Span, Text};
 
 use crate::log::log_file::LogFile;
+use crate::log::log_level::LogLevel;
 use crate::log::log_line::LogLine;
 use crate::mode::command::{Command, Commands};
 use crate::mode::filter::Filters;
@@ -154,6 +155,8 @@ impl<'a> AppState<'a> {
             .map(|s| self.apply_highlights_to_line(s))
     }
 
+    // Returns an iterator of tuples of the filtered log lines.
+    // Each tuple has the line's original line number, and the log line.
     fn filter_all_lines_iter(&'a self) -> impl IntoIterator<Item = (usize, &'a LogLine<'a>)> {
         self.lines
             .iter()
@@ -473,6 +476,18 @@ impl<'a> AppState<'a> {
                                 KeyCode::Char('u') => {
                                     self.goto_next_mark();
                                 }
+                                KeyCode::Char('E') => {
+                                    self.goto_prev_error();
+                                }
+                                KeyCode::Char('e') => {
+                                    self.goto_next_error();
+                                }
+                                KeyCode::Char('W') => {
+                                    self.goto_prev_warning();
+                                }
+                                KeyCode::Char('w') => {
+                                    self.goto_next_warning();
+                                }
                                 KeyCode::Tab => {
                                     self.mode = AppMode::FiltersMenu;
                                 }
@@ -513,32 +528,54 @@ impl<'a> AppState<'a> {
         self.word_wrapping
     }
 
-    fn goto_prev_mark(&mut self) {
+    fn goto_prev<P: FnMut(&LogLine<'_>) -> bool>(&mut self, mut pred: P) {
         let offset = self
             .filter_all_lines_iter()
             .into_iter()
             .enumerate()
             .take(self.line_offset)
-            .filter(|(_, line)| line.1.marked)
-            .map(|(i, _)| i)
+            .filter_map(|(i, line)| pred(line.1).then_some(i))
             .last()
             .unwrap_or(self.line_offset);
 
         self.line_offset = offset;
     }
 
-    fn goto_next_mark(&mut self) {
+    fn goto_next<P: FnMut(&LogLine<'_>) -> bool>(&mut self, mut pred: P) {
         let Some(offset) = self
             .filter_lines_iter()
             .into_iter()
             .skip(1)
             .enumerate()
-            .find(|(_, line)| line.1.marked)
-            .map(|(i, _)| i)
+            .find_map(|(i, line)| pred(line.1).then_some(i))
         else {
             return;
         };
 
         self.line_offset += offset + 1;
+    }
+
+    fn goto_prev_mark(&mut self) {
+        self.goto_prev(|l: &LogLine| l.marked);
+    }
+
+    fn goto_next_mark(&mut self) {
+        self.goto_next(|l: &LogLine| l.marked);
+    }
+
+    fn goto_prev_error(&mut self) {
+        self.goto_prev(|l| l.level == LogLevel::Error);
+    }
+
+    fn goto_next_error(&mut self) {
+        self.goto_next(|l| l.level == LogLevel::Error);
+    }
+
+    fn goto_prev_warning(&mut self) {
+        self.goto_prev(|l| l.level == LogLevel::Warning);
+    }
+
+    fn goto_next_warning(&mut self) {
+        self.goto_next(|l| l.level == LogLevel::Warning);
     }
 }

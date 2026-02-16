@@ -3,7 +3,7 @@ use ratatui::{
     text::Span,
 };
 
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LogLevel {
     Trace,
     Debug,
