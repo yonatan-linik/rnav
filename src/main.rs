@@ -9,13 +9,13 @@ use error::Result;
 use log::log_file::LogFile;
 use num_format::ToFormattedString;
 use ratatui::{
+    DefaultTerminal, Frame,
     layout::{Constraint, Layout, Rect},
     text::{Line, Text},
     widgets::{Block, Borders, Paragraph, StatefulWidget, Wrap},
-    DefaultTerminal, Frame,
 };
 
-use clap::{command, Parser};
+use clap::{Parser, command};
 
 /// Simple program to greet a person
 #[derive(Parser, Debug)]
@@ -116,7 +116,11 @@ fn render(frame: &mut Frame, state: &mut AppState) {
 
     let b = Block::new().borders(Borders::RIGHT);
     frame.render_widget(&b, main_area);
-    let mut logs = Paragraph::new(Text::from_iter(state.lines_iter()));
+
+    let size = b.inner(main_area).as_size();
+    let mut logs = Paragraph::new(Text::from_iter(
+        state.lines_iter().into_iter().take(size.height as usize),
+    ));
     if state.wrapping() {
         logs = logs.wrap(Wrap { trim: false })
     }

@@ -112,11 +112,7 @@ impl Filters {
     }
 
     pub fn filters_menu_info_lines_size(&self) -> usize {
-        if self.filters.is_empty() {
-            1
-        } else {
-            2
-        }
+        if self.filters.is_empty() { 1 } else { 2 }
     }
 
     pub fn filters_menu_size(&self) -> usize {

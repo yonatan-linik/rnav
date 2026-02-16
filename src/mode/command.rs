@@ -62,9 +62,7 @@ impl std::str::FromStr for Command {
                 }
                 Ok(Command::Comment(comment.to_string()))
             }
-            "clear-comment" => {
-                Ok(Command::ClearComment)
-            }
+            "clear-comment" => Ok(Command::ClearComment),
             _ => Err(Error::UnknownCommand(command.to_string())),
         }
     }

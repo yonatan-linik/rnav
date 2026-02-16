@@ -32,7 +32,6 @@ impl LogFile {
         let file = file.into_raw_fd();
 
         let mmap = unsafe { memmap2::Mmap::map(file) }.expect("To succeed mmaping");
-        std::str::from_utf8(&mmap).expect("To be valid utf8");
 
         let mut hasher = DefaultHasher::new();
         name.hash(&mut hasher);
@@ -51,9 +50,8 @@ impl LogFile {
         }
     }
 
-    pub fn contents(&self) -> &str {
-        // SAFETY: The file contents being a valid utf-8 is one of the invariants of this struct.
-        unsafe { std::str::from_utf8_unchecked(&self.mmap) }
+    pub fn contents(&self) -> &[u8] {
+        &self.mmap
     }
 }
 

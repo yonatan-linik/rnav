@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use chrono::{DateTime, FixedOffset};
 
 use crate::log::log_file::LogFile;
@@ -13,7 +15,7 @@ thread_local! {
 pub struct LogLine<'a> {
     pub src_file: &'a LogFile,
     pub time: DateTime<FixedOffset>,
-    pub log: &'a str,
+    pub log: Cow<'a, str>,
     pub level: LogLevel,
     pub marked: bool,
     pub comment: Option<String>,
@@ -51,7 +53,7 @@ impl<'a> LogLine<'a> {
     ///                 18/Mar/2003:08:05:30 +0200 Unknown format").unwrap();
     /// let file = LogFile::new("/tmp/test".into());
     /// let contents = file.contents();
-    /// let mut lines = contents.lines();
+    /// let mut lines = contents.split(|c| *c == b'\n').map(|l| str::from_utf8(l).unwrap().trim().into());
     /// // RFC3339 format
     /// assert_eq!(LogLine::new(&file, lines.next().unwrap()),
     ///            LogLine { src_file: &file,
@@ -59,7 +61,7 @@ impl<'a> LogLine<'a> {
     ///                            .unwrap()
     ///                            .with_ymd_and_hms(2021, 8, 1, 12, 0, 0)
     ///                            .unwrap(),
-    ///                      log: "2021-08-01T12:00:00Z INFO Hello, world!",
+    ///                      log: "2021-08-01T12:00:00Z INFO Hello, world!".into(),
     ///                      level: LogLevel::Unknown,
     ///                      marked: false,
     ///                      comment: None
@@ -72,7 +74,7 @@ impl<'a> LogLine<'a> {
     ///                            .unwrap()
     ///                            .with_ymd_and_hms(2015, 2, 18, 23, 16, 9)
     ///                            .unwrap(),
-    ///                      log: "Wed, 18 Feb 2015 23:16:09 GMT ERROR Log contents",
+    ///                      log: "Wed, 18 Feb 2015 23:16:09 GMT ERROR Log contents".into(),
     ///                      level: LogLevel::Error,
     ///                      marked: false,
     ///                      comment: None
@@ -82,7 +84,7 @@ impl<'a> LogLine<'a> {
     /// assert_eq!(LogLine::new(&file, lines.next().unwrap()),
     ///            LogLine { src_file: &file,
     ///                      time: DateTime::<Utc>::MAX_UTC.fixed_offset(),
-    ///                      log: "18/Mar/2003:08:05:30 +0200 Unknown format",
+    ///                      log: "18/Mar/2003:08:05:30 +0200 Unknown format".into(),
     ///                      level: LogLevel::Unknown,
     ///                      marked: false,
     ///                      comment: None
@@ -91,8 +93,8 @@ impl<'a> LogLine<'a> {
     ///
     /// # std::fs::remove_file("/tmp/test").unwrap();
     /// ```
-    pub fn new<S: AsRef<str> + ?Sized>(src_file: &'a LogFile, line: &'a S) -> Self {
-        let log = line.as_ref().trim();
+    pub fn new(src_file: &'a LogFile, line: Cow<'a, str>) -> Self {
+        let log = line.trim();
         let end_of_rfc2822_time_index = log
             .find('+')
             .map(|i| i + 5)
@@ -125,7 +127,7 @@ impl<'a> LogLine<'a> {
         LogLine {
             src_file,
             time,
-            log,
+            log: line,
             level,
             marked: false,
             comment: None,
