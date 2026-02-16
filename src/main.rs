@@ -15,7 +15,7 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, StatefulWidget, Wrap},
 };
 
-use clap::{Parser, command};
+use clap::Parser;
 
 /// Simple program to greet a person
 #[derive(Parser, Debug)]
