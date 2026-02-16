@@ -44,8 +44,9 @@ impl<'a> AppState<'a> {
             .flat_map(|src_file| {
                 src_file
                     .contents()
-                    .lines()
-                    .map(|l| LogLine::new(src_file, l))
+                    .split(|c| *c == b'\n')
+                    .map(|l| String::from_utf8_lossy(l))
+                    .filter_map(|l| (!l.trim().is_empty()).then(|| LogLine::new(src_file, l)))
             })
             .collect();
         // Keep the lines order inside the same file, only order by time between files
@@ -157,7 +158,7 @@ impl<'a> AppState<'a> {
         self.lines
             .iter()
             .enumerate()
-            .filter(|(_, l)| self.filters.keep_line(l.log))
+            .filter(|(_, l)| self.filters.keep_line(&l.log))
     }
 
     fn filter_lines_iter(&'a self) -> impl IntoIterator<Item = (usize, &'a LogLine<'a>)> {
@@ -172,7 +173,7 @@ impl<'a> AppState<'a> {
 
     fn apply_marks_and_offset(
         &'a self,
-        log_lines: impl IntoIterator<Item = LogLine<'a>> + 'a,
+        log_lines: impl IntoIterator<Item = &'a LogLine<'a>> + 'a,
     ) -> impl IntoIterator<Item = Span<'a>> + 'a {
         log_lines.into_iter().map(|l| {
             let offset = self.column_offset.min(l.log.len());
@@ -225,9 +226,9 @@ impl<'a> AppState<'a> {
             })
     }
 
-    fn render_comment_line(&'a self, comment: String, max_file_name_length: usize) -> Line<'a> {
+    fn render_comment_line(&'a self, comment: &'a str, max_file_name_length: usize) -> Line<'a> {
         // Build the file-name-column padding for comment lines so comments do not influence
-        // the range marker logic. Keep the prefix ' └ ' unstyled and only style the comment content.
+        // the range marker logic. Keep the prefix '└ ' unstyled and only style the comment content.
         // The comment background must NOT inherit mark backgrounds; always use the default bg here.
         let file_span_comment = if !self.show_file_names {
             // single-space placeholder when file names are hidden
@@ -250,12 +251,12 @@ impl<'a> AppState<'a> {
 
     pub fn lines_iter(&'a self) -> impl IntoIterator<Item = Line<'a>> + 'a {
         // Keep everything lazy: create two clones of the filtered log lines stream.
-        let filtered_for_render = self.filter_lines_iter().into_iter().map(|(_, l)| l.clone());
+        let filtered_for_render = self.filter_lines_iter().into_iter().map(|(_, l)| l);
 
         let filtered_for_comments = self
             .filter_lines_iter()
             .into_iter()
-            .map(|(_, l)| l.comment.clone());
+            .map(|(_, l)| &l.comment);
 
         let marked_lines = self.apply_marks_and_offset(filtered_for_render);
         let highlighted_lines = self.apply_highlights(marked_lines);
@@ -275,8 +276,11 @@ impl<'a> AppState<'a> {
                     .bg(highlighted_line.style.bg.unwrap_or_default());
 
                 // optional comment line (do not affect range markers; use padding in file column)
-                once(log_line)
-                    .chain(comment_opt.map(|c| self.render_comment_line(c, max_file_name_length)))
+                once(log_line).chain(
+                    comment_opt
+                        .as_ref()
+                        .map(|c| self.render_comment_line(c, max_file_name_length)),
+                )
             })
     }
 

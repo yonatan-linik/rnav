@@ -1,0 +1,11 @@
+1996-12-19T16:39:57.2234-08:00 ERROR Test sub-second order
+1996-12-19T16:39:57.1234-08:00 WARN This is the log itself
+Tue, 1 Jul 2003 10:52:37 +0200 WARNING Second line and line
+18/Mar/2003:08:05:23 +0200 ERR Third line
+18/Mar/2003:08:05:24 +0200 Repeat this
+18/Mar/2003:08:05:25 +0200 Repeat this
+18/Mar/2003:08:05:26 +0200 WARN Repeat this
+18/Mar/2003:08:05:27 +0200 Repeat this
+18/Mar/2003:08:05:28 +0200 ERROR Repeat this
+18/Mar/2003:08:05:29 +0200 Repeat this
+18/Mar/2003:08:05:30 +0200 Repeat this
