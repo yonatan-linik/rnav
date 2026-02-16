@@ -24,7 +24,7 @@ pub struct Filter {
 }
 
 impl Filter {
-    pub fn new(kind: FilterKind, regex: regex::Regex) -> Self {
+    pub const fn new(kind: FilterKind, regex: regex::Regex) -> Self {
         Self {
             kind,
             regex,
@@ -43,11 +43,11 @@ impl Filter {
         }
     }
 
-    pub fn is_enabled(&self) -> bool {
+    pub const fn is_enabled(&self) -> bool {
         self.enabled
     }
 
-    pub fn filter_kind(&self) -> FilterKind {
+    pub const fn filter_kind(&self) -> FilterKind {
         self.kind
     }
 
@@ -63,7 +63,7 @@ pub struct Filters {
 }
 
 impl Filters {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             filters: vec![],
             selected_filter: 0,
@@ -111,7 +111,7 @@ impl Filters {
         self.filters.iter().filter(|f| f.is_enabled()).count()
     }
 
-    pub fn filters_menu_info_lines_size(&self) -> usize {
+    pub const fn filters_menu_info_lines_size(&self) -> usize {
         if self.filters.is_empty() { 1 } else { 2 }
     }
 

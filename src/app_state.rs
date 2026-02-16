@@ -72,7 +72,7 @@ impl<'a> AppState<'a> {
         }
     }
 
-    pub fn mode(&self) -> AppMode {
+    pub const fn mode(&self) -> AppMode {
         self.mode
     }
 
@@ -97,7 +97,7 @@ impl<'a> AppState<'a> {
         self.commands.command_bar_text(self.mode)
     }
 
-    pub fn get_line_offset(&self) -> usize {
+    pub const fn get_line_offset(&self) -> usize {
         self.line_offset
     }
 
@@ -218,13 +218,13 @@ impl<'a> AppState<'a> {
                     (Some(_), Some(_)) => "[",
                 };
 
-                if !self.show_file_names {
-                    Span::styled(sep, (curr.color, Color::default()))
-                } else {
+                if self.show_file_names {
                     Span::styled(
                         format!("{:width$}{sep}", curr.name, width = max_file_name_length),
                         (curr.color, Color::default()),
                     )
+                } else {
+                    Span::styled(sep, (curr.color, Color::default()))
                 }
             })
     }
@@ -233,12 +233,12 @@ impl<'a> AppState<'a> {
         // Build the file-name-column padding for comment lines so comments do not influence
         // the range marker logic. Keep the prefix '└ ' unstyled and only style the comment content.
         // The comment background must NOT inherit mark backgrounds; always use the default bg here.
-        let file_span_comment = if !self.show_file_names {
-            // single-space placeholder when file names are hidden
-            Span::raw(" ")
-        } else {
+        let file_span_comment = if self.show_file_names {
             // padded empty column matching file name width
             Span::raw(format!("{:width$}", "", width = max_file_name_length))
+        } else {
+            // single-space placeholder when file names are hidden
+            Span::raw(" ")
         };
 
         let comment_prefix = Span::raw("└ ");
@@ -388,18 +388,9 @@ impl<'a> AppState<'a> {
             AppMode::Logs => {
                 match event {
                     Event::Key(KeyEvent {
-                        code: KeyCode::Char('c'),
-                        modifiers: KeyModifiers::CONTROL,
-                        ..
-                    })
-                    | Event::Key(KeyEvent {
-                        code: KeyCode::Esc, ..
-                    })
-                    | Event::Key(KeyEvent {
-                        code: KeyCode::Char('q'),
-                        modifiers: KeyModifiers::NONE,
-                        ..
-                    }) => {
+code: KeyCode::Char('c'), modifiers: KeyModifiers::CONTROL, .. } | KeyEvent {
+code: KeyCode::Esc, .. } | KeyEvent {
+code: KeyCode::Char('q'), modifiers: KeyModifiers::NONE, .. }) => {
                         return AppAction::EndApp;
                     }
                     Event::Key(key) => {
@@ -407,26 +398,26 @@ impl<'a> AppState<'a> {
                             match key.code {
                                 KeyCode::Left | KeyCode::Char('h') => {
                                     if self.column_offset == 0 {
-                                        self.show_file_names = true
+                                        self.show_file_names = true;
                                     }
-                                    self.column_offset = self.column_offset.saturating_sub(10)
+                                    self.column_offset = self.column_offset.saturating_sub(10);
                                 }
                                 KeyCode::Up | KeyCode::Char('k') => {
-                                    self.line_offset = self.line_offset.saturating_sub(1)
+                                    self.line_offset = self.line_offset.saturating_sub(1);
                                 }
                                 KeyCode::Right | KeyCode::Char('l') => {
-                                    if !self.show_file_names {
+                                    if self.show_file_names {
+                                        self.show_file_names = false;
+                                    } else {
                                         self.column_offset =
                                             self.column_offset.saturating_add(10).min(
                                                 self.longest_filtered_log().saturating_sub(1) / 10
                                                     * 10,
                                             );
-                                    } else {
-                                        self.show_file_names = false;
                                     }
                                 }
                                 KeyCode::Down | KeyCode::Char('j') => {
-                                    self.line_offset = self.line_offset.saturating_add(1)
+                                    self.line_offset = self.line_offset.saturating_add(1);
                                 }
                                 KeyCode::Char('g') => {
                                     self.line_offset = 0;
@@ -452,7 +443,7 @@ impl<'a> AppState<'a> {
                                 }
                                 // KeyCode::Char(c) => app.on_key(c),
                                 _ => (),
-                            };
+                            }
 
                             self.line_offset = self
                                 .line_offset
@@ -524,7 +515,7 @@ impl<'a> AppState<'a> {
         self.lines[i].marked = !self.lines[i].marked;
     }
 
-    pub fn wrapping(&self) -> bool {
+    pub const fn wrapping(&self) -> bool {
         self.word_wrapping
     }
 

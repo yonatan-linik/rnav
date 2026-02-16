@@ -122,7 +122,7 @@ fn render(frame: &mut Frame, state: &mut AppState) {
         state.lines_iter().into_iter().take(size.height as usize),
     ));
     if state.wrapping() {
-        logs = logs.wrap(Wrap { trim: false })
+        logs = logs.wrap(Wrap { trim: false });
     }
     frame.render_widget(logs, b.inner(main_area));
 

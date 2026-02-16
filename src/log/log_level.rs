@@ -21,14 +21,14 @@ impl std::str::FromStr for LogLevel {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.trim() {
-            "TRACE" => Ok(LogLevel::Trace),
-            "DEBUG" => Ok(LogLevel::Debug),
-            "INFO" => Ok(LogLevel::Info),
-            "WARN" | "WARNING" => Ok(LogLevel::Warning),
-            "ERR" | "ERROR" => Ok(LogLevel::Error),
-            "NOTICE" => Ok(LogLevel::Notice),
-            "CRIT" | "CRITICAL" => Ok(LogLevel::Critical),
-            _ => Ok(LogLevel::Unknown),
+            "TRACE" => Ok(Self::Trace),
+            "DEBUG" => Ok(Self::Debug),
+            "INFO" => Ok(Self::Info),
+            "WARN" | "WARNING" => Ok(Self::Warning),
+            "ERR" | "ERROR" => Ok(Self::Error),
+            "NOTICE" => Ok(Self::Notice),
+            "CRIT" | "CRITICAL" => Ok(Self::Critical),
+            _ => Ok(Self::Unknown),
         }
     }
 }

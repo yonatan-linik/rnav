@@ -93,7 +93,7 @@ impl<'a> LogLine<'a> {
     ///
     /// # std::fs::remove_file("/tmp/test").unwrap();
     /// ```
-    pub fn new(src_file: &'a LogFile, line: Cow<'a, str>) -> Self {
+    #[must_use] pub fn new(src_file: &'a LogFile, line: Cow<'a, str>) -> Self {
         let log = line.trim();
         let end_of_rfc2822_time_index = log
             .find('+')

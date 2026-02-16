@@ -32,27 +32,27 @@ impl std::str::FromStr for Command {
             .unwrap_or((s.trim(), ""));
 
         match command {
-            "toggle-wrapping" => Ok(Command::ToggleWrapping),
+            "toggle-wrapping" => Ok(Self::ToggleWrapping),
             "filter-in" => {
                 if args.is_empty() {
                     return Err(Error::NoArgumentsGivenToCommand);
                 }
                 let r = Regex::new(args)?;
-                Ok(Command::FilterIn(r))
+                Ok(Self::FilterIn(r))
             }
             "filter-out" => {
                 if args.is_empty() {
                     return Err(Error::NoArgumentsGivenToCommand);
                 }
                 let r = Regex::new(args)?;
-                Ok(Command::FilterOut(r))
+                Ok(Self::FilterOut(r))
             }
             "highlight" => {
                 if args.is_empty() {
                     return Err(Error::NoArgumentsGivenToCommand);
                 }
                 let r = Regex::new(args)?;
-                Ok(Command::Highlight(r))
+                Ok(Self::Highlight(r))
             }
             "comment" => {
                 // For comment we want the entire remaining text as the comment (may contain spaces).
@@ -60,9 +60,9 @@ impl std::str::FromStr for Command {
                 if comment.is_empty() {
                     return Err(Error::NoArgumentsGivenToCommand);
                 }
-                Ok(Command::Comment(comment.to_string()))
+                Ok(Self::Comment(comment.to_string()))
             }
-            "clear-comment" => Ok(Command::ClearComment),
+            "clear-comment" => Ok(Self::ClearComment),
             _ => Err(Error::UnknownCommand(command.to_string())),
         }
     }
@@ -118,7 +118,7 @@ pub struct Commands {
 }
 
 impl Commands {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             current_command: String::new(),
             command_completions: vec![],

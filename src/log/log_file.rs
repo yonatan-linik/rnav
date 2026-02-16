@@ -23,7 +23,7 @@ pub struct LogFile {
 impl LogFile {
     /// The color of the log file is calculated from the name of the file.
     /// Files that have the exact same name will have the same color.
-    pub fn new(name: Arc<str>) -> Self {
+    #[must_use] pub fn new(name: Arc<str>) -> Self {
         let file = std::fs::File::open(&*name).expect("Can open file");
 
         #[cfg(target_os = "windows")]
@@ -50,7 +50,7 @@ impl LogFile {
         }
     }
 
-    pub fn contents(&self) -> &[u8] {
+    #[must_use] pub fn contents(&self) -> &[u8] {
         &self.mmap
     }
 }
