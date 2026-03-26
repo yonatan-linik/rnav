@@ -170,8 +170,9 @@ impl<'a> AppState<'a> {
             .skip(self.line_offset)
     }
 
-    pub fn filtered_lines_count(&self) -> usize {
-        self.filter_all_lines_iter().into_iter().count()
+    pub fn filtered_lines_count(&mut self) -> usize {
+        self.filters
+            .get_filtered_lines_count(self.lines.iter().map(|l| l.log.as_ref()))
     }
 
     fn apply_marks_and_offset(
@@ -370,7 +371,7 @@ impl<'a> AppState<'a> {
         }
 
         let shown_lines_count = self.filtered_lines_count();
-        self.line_offset = self.line_offset.min(shown_lines_count - 1);
+        self.line_offset = self.line_offset.min(shown_lines_count.saturating_sub(1));
 
         match self.mode {
             AppMode::Command => {

@@ -60,6 +60,7 @@ pub struct Filters {
     filters: Vec<Filter>,
     selected_filter: usize,
     filtering_enabled: bool,
+    filtered_lines_count_cache: Option<usize>,
 }
 
 impl Filters {
@@ -68,20 +69,37 @@ impl Filters {
             filters: vec![],
             selected_filter: 0,
             filtering_enabled: true,
+            filtered_lines_count_cache: None,
         }
     }
 
     pub fn clear(&mut self) {
         self.filters.clear();
         self.selected_filter = 0;
+        self.filtered_lines_count_cache = None;
     }
 
     pub fn create_in_filter(&mut self, r: Regex) {
         self.filters.push(Filter::new(FilterKind::In, r));
+        self.filtered_lines_count_cache = None;
     }
 
     pub fn create_out_filter(&mut self, r: Regex) {
         self.filters.push(Filter::new(FilterKind::Out, r));
+        self.filtered_lines_count_cache = None;
+    }
+
+    pub fn get_filtered_lines_count<'a>(
+        &mut self,
+        lines: impl IntoIterator<Item = &'a str>,
+    ) -> usize {
+        if let Some(count) = self.filtered_lines_count_cache {
+            return count;
+        };
+
+        let count = lines.into_iter().filter(|l| self.keep_line(l)).count();
+        self.filtered_lines_count_cache = Some(count);
+        count
     }
 
     pub fn keep_line(&self, line: &str) -> bool {
@@ -231,6 +249,7 @@ impl Filters {
                 if !self.filters.is_empty() {
                     let filter = &mut self.filters[self.selected_filter];
                     filter.enabled = !filter.enabled;
+                    self.filtered_lines_count_cache = None;
                 }
             }
             Event::Key(KeyEvent {
@@ -243,6 +262,7 @@ impl Filters {
                         FilterKind::In => FilterKind::Out,
                         FilterKind::Out => FilterKind::In,
                     };
+                    self.filtered_lines_count_cache = None;
                 }
             }
             Event::Key(KeyEvent {
@@ -252,6 +272,7 @@ impl Filters {
                 if !self.filters.is_empty() {
                     self.filters.remove(self.selected_filter);
                     self.selected_filter = self.selected_filter.saturating_sub(1);
+                    self.filtered_lines_count_cache = None;
                 }
             }
             Event::Key(KeyEvent {
@@ -259,6 +280,7 @@ impl Filters {
                 ..
             }) => {
                 self.filtering_enabled = !self.filtering_enabled;
+                self.filtered_lines_count_cache = None;
             }
             Event::Key(KeyEvent {
                 code: KeyCode::Char('q'),
@@ -268,5 +290,89 @@ impl Filters {
         }
 
         (None, None)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+    use regex::Regex;
+
+    #[test]
+    fn test_cache_invalidation_create_clear() {
+        let mut filters = Filters::new();
+        let lines = vec!["foo", "bar", "foobar"];
+
+        // initial count (no filters)
+        let count = filters.get_filtered_lines_count(lines.iter().map(|s| *s));
+        assert_eq!(count, 3);
+
+        // cached result should be returned even if iterator would be empty
+        let cached = filters.get_filtered_lines_count(std::iter::empty());
+        assert_eq!(cached, 3);
+
+        // creating an IN filter invalidates the cache
+        filters.create_in_filter(Regex::new("foo").unwrap());
+        let new_count = filters.get_filtered_lines_count(lines.iter().map(|s| *s));
+        assert_eq!(new_count, 2);
+
+        // clearing filters invalidates cache
+        filters.clear();
+        let cleared_count = filters.get_filtered_lines_count(lines.iter().map(|s| *s));
+        assert_eq!(cleared_count, 3);
+    }
+
+    #[test]
+    fn test_cache_invalidation_read_event_mutations() {
+        let mut filters = Filters::new();
+        let lines = vec!["foo", "bar", "foobar"];
+
+        filters.create_in_filter(Regex::new("foo").unwrap());
+        let c1 = filters.get_filtered_lines_count(lines.iter().map(|s| *s));
+        assert_eq!(c1, 2);
+
+        // toggle enabled via space -> disables the only filter -> all lines pass
+        filters.read_event(Event::Key(KeyEvent::new(
+            KeyCode::Char(' '),
+            KeyModifiers::NONE,
+        )));
+        let c2 = filters.get_filtered_lines_count(lines.iter().map(|s| *s));
+        assert_eq!(c2, 3);
+
+        // re-enable it
+        filters.read_event(Event::Key(KeyEvent::new(
+            KeyCode::Char(' '),
+            KeyModifiers::NONE,
+        )));
+        let c3 = filters.get_filtered_lines_count(lines.iter().map(|s| *s));
+        assert_eq!(c3, 2);
+
+        // change kind to OUT via 't' -> exclude matches -> only "bar" remains
+        filters.read_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('t'),
+            KeyModifiers::NONE,
+        )));
+        let c4 = filters.get_filtered_lines_count(lines.iter().map(|s| *s));
+        assert_eq!(c4, 1);
+
+        // delete via 'D' -> no filters -> all lines
+        filters.read_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('D'),
+            KeyModifiers::NONE,
+        )));
+        let c5 = filters.get_filtered_lines_count(lines.iter().map(|s| *s));
+        assert_eq!(c5, 3);
+
+        // create and toggle overall filtering via 'f'
+        filters.create_in_filter(Regex::new("foo").unwrap());
+        let c6 = filters.get_filtered_lines_count(lines.iter().map(|s| *s));
+        assert_eq!(c6, 2);
+        filters.read_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('f'),
+            KeyModifiers::NONE,
+        )));
+        let c7 = filters.get_filtered_lines_count(lines.iter().map(|s| *s));
+        assert_eq!(c7, 3);
     }
 }
