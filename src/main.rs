@@ -112,6 +112,11 @@ fn render(frame: &mut Frame, state: &mut AppState) {
             table.render(table_area, frame.buffer_mut(), &mut table_state);
         }
         AppMode::Logs => (),
+        AppMode::Search => {
+            frame.render_widget(state.search_bar_text(), command_bar);
+            // Always reset to Logs mode when Search is exited.
+            // let _ = &search; // unused until we add a persistent-search overlay
+        }
     }
 
     let b = Block::new().borders(Borders::RIGHT);
