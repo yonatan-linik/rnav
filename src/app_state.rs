@@ -12,17 +12,19 @@ use crate::log::log_level::LogLevel;
 use crate::log::log_line::LogLine;
 use crate::mode::command::{Command, Commands};
 use crate::mode::filter::Filters;
+use crate::mode::search::Search;
 
 pub enum AppAction {
     EndApp,
     NoAction,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone)]
 pub enum AppMode {
     Logs,
     Command,
     FiltersMenu,
+    Search,
 }
 
 pub struct AppState<'a> {
@@ -32,6 +34,7 @@ pub struct AppState<'a> {
     column_offset: usize,
     pub filters: Filters,
     commands: Commands,
+    search: Search,
     mode: AppMode,
     highlights: Vec<(regex::Regex, Color)>,
     show_file_names: bool,
@@ -68,12 +71,13 @@ impl<'a> AppState<'a> {
             show_file_names: false,
             file_names,
             commands: Commands::new(),
+            search: Search::new(),
             word_wrapping: false,
         }
     }
 
-    pub fn mode(&self) -> AppMode {
-        self.mode
+    pub fn mode(&self) -> &AppMode {
+        &self.mode
     }
 
     fn reset_session(&mut self) {
@@ -83,18 +87,24 @@ impl<'a> AppState<'a> {
             line.marked = false;
             line.comment = None;
         });
+        self.search.clear();
     }
 
     pub fn state_bar_text_number_of_lines(&self) -> usize {
         match self.mode {
-            AppMode::Command => self.commands.command_bar_text(self.mode).lines.len(),
+            AppMode::Command => self.command_bar_text().lines.len(),
             AppMode::Logs => 0,
             AppMode::FiltersMenu => self.filters.filters_menu_size(),
+            AppMode::Search => self.search_bar_text().lines.len(),
         }
     }
 
     pub fn command_bar_text(&self) -> Text<'_> {
-        self.commands.command_bar_text(self.mode)
+        self.commands.command_bar_text(&self.mode)
+    }
+
+    pub fn search_bar_text(&self) -> Text<'_> {
+        self.search.command_bar_text(&self.mode)
     }
 
     pub fn get_line_offset(&self) -> usize {
@@ -122,10 +132,10 @@ impl<'a> AppState<'a> {
         result
     }
 
-    fn apply_highlights_to_line(&'a self, span: Span<'a>) -> Line<'a> {
+    fn apply_highlights_to_line(&'a self, line: Line<'a>) -> Line<'a> {
         // If the log line is marked make sure it is for the entire line
-        let bg_color = span.style.bg.unwrap_or_default();
-        let mut spans: Box<dyn Iterator<Item = Span<'a>>> = Box::new(once(span));
+        let bg_color = line.style.bg.unwrap_or_default();
+        let mut spans: Box<dyn Iterator<Item = Span<'a>>> = Box::new(line.spans.into_iter());
 
         for (regex, color) in &self.highlights {
             let new_spans: Box<dyn Iterator<Item = Span<'a>>> = Box::new(
@@ -152,6 +162,7 @@ impl<'a> AppState<'a> {
     ) -> impl IntoIterator<Item = Line<'a>> + 'a {
         log_lines
             .into_iter()
+            .map(|l| self.apply_search_to_line(l))
             .map(|s| self.apply_highlights_to_line(s))
     }
 
@@ -188,6 +199,31 @@ impl<'a> AppState<'a> {
                 Span::raw(log)
             }
         })
+    }
+
+    fn apply_search_to_line(&'a self, span: Span<'a>) -> Line<'a> {
+        let Some(pattern) = self.search.active_search_pattern() else {
+            return span.into();
+        };
+
+        let bg_color = span.style.bg.unwrap_or_default();
+
+        let b = match span.content {
+            std::borrow::Cow::Borrowed(b) => b,
+            std::borrow::Cow::Owned(_) => unreachable!(
+                "This can never be owned, it is always borrowed from the original log text, and we don't modify it"
+            ),
+        };
+
+        let new_style = if bg_color == Color::White {
+            span.style.fg(Color::White).bg(Color::Black)
+        } else {
+            span.style.fg(Color::Black).bg(Color::White)
+        };
+
+        let new_spans = AppState::split_keep(pattern, b, span.style, new_style);
+
+        Line::from_iter(new_spans).bg(bg_color)
     }
 
     fn filtered_lines_file_names(&'a self) -> impl IntoIterator<Item = Span<'a>> + 'a {
@@ -370,10 +406,7 @@ impl<'a> AppState<'a> {
             return AppAction::NoAction;
         }
 
-        let shown_lines_count = self.filtered_lines_count();
-        self.line_offset = self.line_offset.min(shown_lines_count.saturating_sub(1));
-
-        match self.mode {
+        match &self.mode {
             AppMode::Command => {
                 let (new_mode, cmd) = self.commands.read_event(event);
                 self.mode = new_mode.unwrap_or(AppMode::Command);
@@ -455,10 +488,6 @@ impl<'a> AppState<'a> {
                                 _ => (),
                             };
 
-                            self.line_offset = self
-                                .line_offset
-                                .min(self.filtered_lines_count().saturating_sub(1));
-
                             match key.code {
                                 KeyCode::Char(':') => {
                                     self.mode = AppMode::Command;
@@ -489,8 +518,17 @@ impl<'a> AppState<'a> {
                                 KeyCode::Char('w') => {
                                     self.goto_next_warning();
                                 }
+                                KeyCode::Char('N') => {
+                                    self.goto_prev_search_match();
+                                }
+                                KeyCode::Char('n') => {
+                                    self.goto_next_search_match();
+                                }
                                 KeyCode::Tab => {
                                     self.mode = AppMode::FiltersMenu;
+                                }
+                                KeyCode::Char('/') => {
+                                    self.mode = AppMode::Search;
                                 }
                                 _ => (),
                             }
@@ -502,13 +540,23 @@ impl<'a> AppState<'a> {
                             MouseEventKind::ScrollUp => self.line_offset.saturating_add(1),
                             _ => self.line_offset,
                         };
-
-                        self.line_offset = self.line_offset.min(self.lines.len() - 1);
                     }
                     _ => (),
                 }
             }
+            AppMode::Search => {
+                let (mode, action) = self.search.read_event(event);
+                if let Some(m) = mode {
+                    self.mode = m;
+                }
+                if let Some(a) = action {
+                    return a;
+                }
+            }
         }
+
+        let shown_lines_count = self.filtered_lines_count();
+        self.line_offset = self.line_offset.min(shown_lines_count.saturating_sub(1));
 
         AppAction::NoAction
     }
@@ -578,5 +626,19 @@ impl<'a> AppState<'a> {
 
     fn goto_next_warning(&mut self) {
         self.goto_next(|l| l.level == LogLevel::Warning);
+    }
+
+    fn goto_prev_search_match(&mut self) {
+        let Some(regex) = self.search.active_search_pattern().cloned() else {
+            return;
+        };
+        self.goto_prev(|l| regex.is_match(l.log.as_ref()));
+    }
+
+    fn goto_next_search_match(&mut self) {
+        let Some(regex) = self.search.active_search_pattern().cloned() else {
+            return;
+        };
+        self.goto_next(|l| regex.is_match(l.log.as_ref()));
     }
 }

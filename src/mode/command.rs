@@ -142,12 +142,12 @@ impl Commands {
         )))
     }
 
-    pub fn command_bar_text(&self, app_mode: AppMode) -> Text<'_> {
+    pub fn command_bar_text(&self, app_mode: &AppMode) -> Text<'_> {
         if !self.command_error.is_empty() {
             return Text::from_iter(self.command_error.lines().map(|l| l.to_string().red()));
         }
 
-        if app_mode != AppMode::Command {
+        if !matches!(app_mode, AppMode::Command) {
             return Text::default();
         }
 
