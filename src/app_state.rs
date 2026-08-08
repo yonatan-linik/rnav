@@ -1,9 +1,11 @@
 use std::cmp::Ordering;
+use std::ffi::{OsStr, OsString};
 use std::iter::once;
+use std::path::Path;
 use std::sync::Arc;
 
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEventKind};
-use itertools::Itertools;
+use itertools::{Itertools, intersperse};
 use ratatui::style::{Color, Style, Stylize};
 use ratatui::text::{Line, Span, Text};
 
@@ -28,7 +30,7 @@ pub enum AppMode {
 }
 
 pub struct AppState<'a> {
-    file_names: Vec<Arc<str>>,
+    file_names: Vec<Arc<Path>>,
     lines: Vec<LogLine<'a>>,
     line_offset: usize,
     column_offset: usize,
@@ -232,7 +234,12 @@ impl<'a> AppState<'a> {
             .into_iter()
             .map(|(_, l)| l.src_file);
 
-        let max_file_name_length = self.file_names.iter().map(|n| n.len()).max().unwrap_or(0);
+        let max_file_name_length = self
+            .file_names
+            .iter()
+            .map(|n| n.to_string_lossy().len())
+            .max()
+            .unwrap_or(0);
 
         once(None)
             .chain(lines.into_iter().map(Some))
@@ -259,7 +266,11 @@ impl<'a> AppState<'a> {
                     Span::styled(sep, (curr.color, Color::default()))
                 } else {
                     Span::styled(
-                        format!("{:width$}{sep}", curr.name, width = max_file_name_length),
+                        format!(
+                            "{:width$}{sep}",
+                            curr.name.to_string_lossy(),
+                            width = max_file_name_length
+                        ),
                         (curr.color, Color::default()),
                     )
                 }
@@ -275,7 +286,7 @@ impl<'a> AppState<'a> {
             Span::raw(" ")
         } else {
             // padded empty column matching file name width
-            Span::raw(format!("{:width$}", "", width = max_file_name_length))
+            Span::raw(format!("{:width$}", "", width = max_file_name_length + 1))
         };
 
         let comment_prefix = Span::raw("└ ");
@@ -303,7 +314,12 @@ impl<'a> AppState<'a> {
         let named_lines = self.filtered_lines_file_names();
 
         // Precompute file name width for comment padding
-        let max_file_name_length = self.file_names.iter().map(|n| n.len()).max().unwrap_or(0);
+        let max_file_name_length = self
+            .file_names
+            .iter()
+            .map(|n| n.to_string_lossy().len())
+            .max()
+            .unwrap_or(0);
 
         // Zip name, highlighted line and comment (option) together and lazily emit one or two visual lines.
         named_lines
@@ -337,7 +353,12 @@ impl<'a> AppState<'a> {
             Span::raw(format!("⟩{}⟩", l.time.to_rfc3339()))
         };
 
-        let log_file_name = Span::raw(l.src_file.name.replace('/', "⟩"));
+        let log_file_name = Span::raw(
+            intersperse(l.src_file.name.iter(), OsStr::new("⟩"))
+                .collect::<OsString>()
+                .into_string()
+                .expect("log file name should be valid UTF-8"),
+        );
 
         let bg_color = Color::Rgb(40, 40, 40);
 

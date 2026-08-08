@@ -40,6 +40,7 @@ impl<'a> LogLine<'a> {
     ///
     /// # Examples
     /// ```rust
+    /// # use std::path::Path;
     /// # use rnav::LogLine;
     /// # use rnav::log::log_file::LogFile;
     /// # use rnav::log::log_level::LogLevel;
@@ -51,7 +52,7 @@ impl<'a> LogLine<'a> {
     ///                "2021-08-01T12:00:00Z INFO Hello, world!
     ///                 Wed, 18 Feb 2015 23:16:09 GMT ERROR Log contents
     ///                 18/Mar/2003:08:05:30 +0200 Unknown format").unwrap();
-    /// let file = LogFile::new("/tmp/test".into());
+    /// let file = LogFile::new(Path::new("/tmp/test").into());
     /// let contents = file.contents();
     /// let mut lines = contents.split(|c| *c == b'\n').map(|l| str::from_utf8(l).unwrap().trim().into());
     /// // RFC3339 format
