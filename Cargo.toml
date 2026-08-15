@@ -15,18 +15,18 @@ test = true
 doctest = true
 
 [dependencies]
-chrono = "0.4.43"
-clap = { version = "4.5.58", features = ["derive"] }
-color-eyre = "0.6.5"
-crossterm = "0.29.0"
-itertools = "0.14.0"
-num-format = "0.4.4"
-rand = "0.10.0"
-ratatui = "0.30.0"
-regex = "1.12.3"
-strum = { version = "0.27.2", features = ["strum_macros"] }
-thiserror = "2.0.18"
-memmap2 = "0.9"
-zip = "8.6"
+chrono = "0"
+clap = { version = "4", features = ["derive"] }
+color-eyre = "0"
+crossterm = "0"
+itertools = "0"
+num-format = "0"
+rand = "0"
+ratatui = "0"
+regex = "1"
+strum = { version = "0", features = ["strum_macros"] }
+thiserror = "2"
+memmap2 = "0"
+zip = "8"
 tempfile = "3"
 flate2 = { version = "1"}
