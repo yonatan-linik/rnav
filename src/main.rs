@@ -3,6 +3,8 @@ mod error;
 mod log;
 mod mode;
 
+use std::path::PathBuf;
+
 use app_state::{AppMode, AppState};
 use crossterm::event;
 use error::Result;
@@ -22,7 +24,7 @@ use clap::Parser;
 #[command(version, about, long_about = None)]
 struct Args {
     /// File names to open
-    file_names: Vec<String>,
+    file_names: Vec<PathBuf>,
 }
 
 fn main() -> Result<()> {
@@ -42,7 +44,7 @@ fn run(mut terminal: DefaultTerminal, args: Args) -> Result<()> {
     let files: Vec<_> = args
         .file_names
         .iter()
-        .map(|n| LogFile::new(n.as_str().into()))
+        .map(|n| LogFile::new(n.as_path().into()))
         .collect();
 
     let mut state = AppState::new(&files);

@@ -27,3 +27,6 @@ regex = "1.12.3"
 strum = { version = "0.27.2", features = ["strum_macros"] }
 thiserror = "2.0.18"
 memmap2 = "0.9"
+zip = "8.6"
+tempfile = "3"
+flate2 = { version = "1"}
