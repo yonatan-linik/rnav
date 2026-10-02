@@ -48,11 +48,25 @@ impl<'a> AppState<'a> {
         let mut lines: Vec<_> = files
             .iter()
             .flat_map(|src_file| {
+                let mut prev_timestamp = None;
                 src_file
                     .contents()
                     .split(|c| *c == b'\n')
                     .map(|l| String::from_utf8_lossy(l))
-                    .filter_map(|l| (!l.trim().is_empty()).then(|| LogLine::new(src_file, l)))
+                    .filter_map(move |l| {
+                        (!l.trim().is_empty()).then(|| {
+                            let mut log_line = LogLine::new(src_file, l);
+
+                            if let Some(prev_ts) = prev_timestamp
+                                && prev_ts > log_line.time
+                            {
+                                log_line.mark_as_out_of_order();
+                            }
+
+                            prev_timestamp = Some(log_line.time);
+                            log_line
+                        })
+                    })
             })
             .collect();
         // Keep the lines order inside the same file, only order by time between files
@@ -300,6 +314,32 @@ impl<'a> AppState<'a> {
         .bg(Color::default())
     }
 
+    fn render_out_of_order(&'a self, max_file_name_length: usize) -> Line<'a> {
+        // Build the file-name-column padding for comment lines so comments do not influence
+        // the range marker logic. Keep the prefix '└ ' unstyled and only style the comment content.
+        // The comment background must NOT inherit mark backgrounds; always use the default bg here.
+        let file_out_of_order_span = if !self.show_file_names {
+            // single-space placeholder when file names are hidden
+            Span::raw(" ")
+        } else {
+            // padded empty column matching file name width
+            Span::raw(format!("{:width$}", "", width = max_file_name_length + 1))
+        };
+
+        let out_of_order_prefix = Span::raw("└ ");
+        let out_of_order_span = Span::styled(
+            "log is out of order with previous line in log file",
+            Color::Yellow,
+        );
+
+        Line::from_iter(
+            once(file_out_of_order_span)
+                .chain(once(out_of_order_prefix))
+                .chain(once(out_of_order_span)),
+        )
+        .bg(Color::default())
+    }
+
     pub fn lines_iter(&'a self) -> impl IntoIterator<Item = Line<'a>> + 'a {
         // Keep everything lazy: create two clones of the filtered log lines stream.
         let filtered_for_render = self.filter_lines_iter().into_iter().map(|(_, l)| l);
@@ -307,7 +347,7 @@ impl<'a> AppState<'a> {
         let filtered_for_comments = self
             .filter_lines_iter()
             .into_iter()
-            .map(|(_, l)| &l.comment);
+            .map(|(_, l)| (&l.comment, l.out_of_order));
 
         let marked_lines = self.apply_marks_and_offset(filtered_for_render);
         let highlighted_lines = self.apply_highlights(marked_lines);
@@ -326,18 +366,22 @@ impl<'a> AppState<'a> {
             .into_iter()
             .zip(highlighted_lines)
             .zip(filtered_for_comments)
-            .flat_map(move |((file_name, highlighted_line), comment_opt)| {
-                // main line
-                let log_line = Line::from_iter(once(file_name).chain(highlighted_line.spans))
-                    .bg(highlighted_line.style.bg.unwrap_or_default());
+            .flat_map(
+                move |((file_name, highlighted_line), (comment_opt, out_of_order))| {
+                    // main line
+                    let log_line = Line::from_iter(once(file_name).chain(highlighted_line.spans))
+                        .bg(highlighted_line.style.bg.unwrap_or_default());
 
-                // optional comment line (do not affect range markers; use padding in file column)
-                once(log_line).chain(
-                    comment_opt
-                        .as_ref()
-                        .map(|c| self.render_comment_line(c, max_file_name_length)),
-                )
-            })
+                    // optional comment line (do not affect range markers; use padding in file column)
+                    once(log_line)
+                        .chain(
+                            comment_opt
+                                .as_ref()
+                                .map(|c| self.render_comment_line(c, max_file_name_length)),
+                        )
+                        .chain(out_of_order.then(|| self.render_out_of_order(max_file_name_length)))
+                },
+            )
     }
 
     pub fn top_log_line_title_bar_text(&self) -> Line<'_> {
