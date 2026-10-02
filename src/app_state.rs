@@ -12,6 +12,7 @@ use ratatui::text::{Line, Span, Text};
 use crate::log::log_file::LogFile;
 use crate::log::log_level::LogLevel;
 use crate::log::log_line::LogLine;
+use crate::mode::Mode;
 use crate::mode::command::{Command, Commands};
 use crate::mode::filter::Filters;
 use crate::mode::search::Search;
@@ -27,6 +28,13 @@ pub enum AppMode {
     Command,
     FiltersMenu,
     Search,
+}
+
+pub enum Action {
+    App(AppAction),
+    Command(Command),
+    SwitchMode(AppMode),
+    None,
 }
 
 pub struct AppState<'a> {
@@ -471,20 +479,11 @@ impl<'a> AppState<'a> {
             return AppAction::NoAction;
         }
 
-        match &self.mode {
-            AppMode::Command => {
-                let (new_mode, cmd) = self.commands.read_event(event);
-                self.mode = new_mode.unwrap_or(AppMode::Command);
-                if let Some(cmd) = cmd {
-                    self.handle_command(cmd);
-                }
-            }
-            AppMode::FiltersMenu => {
-                let (new_mode, app_action) = self.filters.read_event(event);
-                self.mode = new_mode.unwrap_or(AppMode::FiltersMenu);
-                return app_action.unwrap_or(AppAction::NoAction);
-            }
+        let action = match &self.mode {
+            AppMode::Command => self.commands.read_event(event),
+            AppMode::FiltersMenu => self.filters.read_event(event),
             AppMode::Logs => {
+                let mut action = Action::None;
                 match event {
                     Event::Key(KeyEvent {
                         code: KeyCode::Char('c'),
@@ -498,9 +497,7 @@ impl<'a> AppState<'a> {
                         code: KeyCode::Char('q'),
                         modifiers: KeyModifiers::NONE,
                         ..
-                    }) => {
-                        return AppAction::EndApp;
-                    }
+                    }) => action = Action::App(AppAction::EndApp),
                     Event::Key(key) => {
                         if key.kind == KeyEventKind::Press {
                             match key.code {
@@ -555,7 +552,7 @@ impl<'a> AppState<'a> {
 
                             match key.code {
                                 KeyCode::Char(':') => {
-                                    self.mode = AppMode::Command;
+                                    action = Action::SwitchMode(AppMode::Command);
                                 }
                                 KeyCode::Char('r')
                                     if key.modifiers.contains(KeyModifiers::CONTROL) =>
@@ -590,10 +587,10 @@ impl<'a> AppState<'a> {
                                     self.goto_next_search_match();
                                 }
                                 KeyCode::Tab => {
-                                    self.mode = AppMode::FiltersMenu;
+                                    action = Action::SwitchMode(AppMode::FiltersMenu);
                                 }
                                 KeyCode::Char('/') => {
-                                    self.mode = AppMode::Search;
+                                    action = Action::SwitchMode(AppMode::Search);
                                 }
                                 _ => (),
                             }
@@ -608,16 +605,19 @@ impl<'a> AppState<'a> {
                     }
                     _ => (),
                 }
+                action
             }
-            AppMode::Search => {
-                let (mode, action) = self.search.read_event(event);
-                if let Some(m) = mode {
-                    self.mode = m;
-                }
-                if let Some(a) = action {
-                    return a;
-                }
+            AppMode::Search => self.search.read_event(event),
+        };
+
+        match action {
+            Action::App(app_action) => return app_action,
+            Action::Command(command) => {
+                self.handle_command(command);
+                self.mode = AppMode::Logs;
             }
+            Action::SwitchMode(app_mode) => self.mode = app_mode,
+            Action::None => (),
         }
 
         let shown_lines_count = self.filtered_lines_count();

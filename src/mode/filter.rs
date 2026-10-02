@@ -1,3 +1,4 @@
+use crate::{app_state::Action, mode::Mode};
 use crossterm::event::{Event, KeyCode, KeyEvent};
 use ratatui::{
     layout::Constraint,
@@ -7,7 +8,7 @@ use ratatui::{
 };
 use regex::Regex;
 
-use crate::app_state::{AppAction, AppMode};
+use crate::app_state::AppMode;
 
 const MAX_FILTERS_TABLE_ROWS_DISPLAYED: usize = 5;
 
@@ -221,12 +222,14 @@ impl Filters {
 
         (info_lines, table, table_state)
     }
+}
 
-    pub fn read_event(&mut self, event: Event) -> (Option<AppMode>, Option<AppAction>) {
+impl Mode for Filters {
+    fn read_event(&mut self, event: Event) -> Action {
         match event {
             Event::Key(KeyEvent {
                 code: KeyCode::Tab, ..
-            }) => return (Some(AppMode::Logs), None),
+            }) => return Action::SwitchMode(AppMode::Logs),
             Event::Key(KeyEvent {
                 code: KeyCode::Up | KeyCode::Char('k'),
                 ..
@@ -285,11 +288,11 @@ impl Filters {
             Event::Key(KeyEvent {
                 code: KeyCode::Char('q'),
                 ..
-            }) => return (Some(AppMode::Logs), None),
+            }) => return Action::SwitchMode(AppMode::Logs),
             _ => (),
         }
 
-        (None, None)
+        Action::None
     }
 }
 

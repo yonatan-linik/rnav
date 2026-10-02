@@ -1,5 +1,6 @@
-use crate::app_state::AppMode;
+use crate::app_state::{Action, AppMode};
 use crate::error::{Error, Result};
+use crate::mode::Mode;
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use ratatui::style::{Color, Modifier, Stylize as _};
 use ratatui::text::{Line, Span, Text};
@@ -165,11 +166,13 @@ impl Commands {
 
         text
     }
+}
 
-    pub fn read_event(&mut self, event: Event) -> (Option<AppMode>, Option<Command>) {
+impl Mode for Commands {
+    fn read_event(&mut self, event: Event) -> Action {
         if !self.command_error.is_empty() {
             self.exit_command_mode();
-            return (Some(AppMode::Logs), None);
+            return Action::SwitchMode(AppMode::Logs);
         }
 
         // When a key is pressed, clear command completions
@@ -201,12 +204,12 @@ impl Commands {
                 match curr_cmd.parse() {
                     Ok(cmd) => {
                         self.exit_command_mode();
-                        return (Some(AppMode::Logs), Some(cmd));
+                        return Action::Command(cmd);
                     }
                     Err(err) => {
                         // Stay in command mode for one more keystroke
                         self.command_error = format!("{err}");
-                        return (None, None);
+                        return Action::None;
                     }
                 }
             }
@@ -221,7 +224,7 @@ impl Commands {
                 code: KeyCode::Esc, ..
             }) => {
                 self.exit_command_mode();
-                return (Some(AppMode::Logs), None);
+                return Action::SwitchMode(AppMode::Logs);
             }
             Event::Key(KeyEvent {
                 code: KeyCode::Tab,
@@ -253,6 +256,6 @@ impl Commands {
             _ => (),
         }
 
-        (None, None)
+        Action::None
     }
 }

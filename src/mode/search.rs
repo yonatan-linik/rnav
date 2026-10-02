@@ -2,7 +2,8 @@ use crossterm::event::{Event, KeyCode, KeyEvent};
 use ratatui::style::{Color, Modifier, Stylize as _};
 use ratatui::text::{Span, Text};
 
-use crate::app_state::{AppAction, AppMode};
+use crate::app_state::{Action, AppMode};
+use crate::mode::mode::Mode;
 
 pub struct Search {
     past_patterns: Vec<String>,
@@ -20,82 +21,6 @@ impl Search {
             pattern: String::new(),
             active_pattern: None,
             search_error: String::new(),
-        }
-    }
-
-    pub fn read_event(&mut self, event: Event) -> (Option<AppMode>, Option<AppAction>) {
-        let Event::Key(KeyEvent { code: key, .. }) = event else {
-            return (None, None);
-        };
-
-        if !self.search_error.is_empty() {
-            self.search_error.clear();
-            return (Some(AppMode::Logs), None);
-        }
-
-        match key {
-            KeyCode::Char('\n') | KeyCode::Enter => {
-                let regex = match regex::Regex::new(self.pattern.as_str()) {
-                    Err(e) => {
-                        self.active_pattern = None;
-                        self.search_error = format!("{e}");
-                        return (Some(AppMode::Search), None);
-                    }
-                    Ok(regex) => regex,
-                };
-
-                self.active_pattern = Some(regex);
-                self.past_patterns.push(self.pattern.clone());
-                self.pattern.clear();
-                (Some(AppMode::Logs), None)
-            }
-            KeyCode::Esc => {
-                self.last_selected_pattern = None;
-                if self.pattern.is_empty() {
-                    (Some(AppMode::Logs), None)
-                } else {
-                    self.pattern.clear();
-                    (Some(AppMode::Search), None)
-                }
-            }
-            KeyCode::Char(c) => {
-                self.pattern.push(c);
-
-                (None, None)
-            }
-            KeyCode::Backspace => {
-                if self.pattern.is_empty() {
-                    (Some(AppMode::Logs), None)
-                } else {
-                    self.pattern.pop();
-                    (None, None)
-                }
-            }
-            KeyCode::Up => {
-                let index = self
-                    .last_selected_pattern
-                    .get_or_insert(self.past_patterns.len());
-
-                *index = (*index).saturating_sub(1);
-                if let Some(pattern) = self.past_patterns.get(*index) {
-                    self.pattern = pattern.clone();
-                }
-
-                (None, None)
-            }
-            KeyCode::Down => {
-                let Some(index) = self.last_selected_pattern.as_mut() else {
-                    return (None, None);
-                };
-
-                *index = (*index).saturating_add(1);
-                if let Some(pattern) = self.past_patterns.get(*index) {
-                    self.pattern = pattern.clone();
-                }
-
-                (None, None)
-            }
-            _ => (None, None),
         }
     }
 
@@ -128,5 +53,83 @@ impl Search {
         self.active_pattern = None;
         self.search_error.clear();
         self.past_patterns.clear();
+    }
+}
+
+impl Mode for Search {
+    fn read_event(&mut self, event: Event) -> Action {
+        let Event::Key(KeyEvent { code: key, .. }) = event else {
+            return Action::None;
+        };
+
+        if !self.search_error.is_empty() {
+            self.search_error.clear();
+            return Action::SwitchMode(AppMode::Logs);
+        }
+
+        match key {
+            KeyCode::Char('\n') | KeyCode::Enter => {
+                let regex = match regex::Regex::new(self.pattern.as_str()) {
+                    Err(e) => {
+                        self.active_pattern = None;
+                        self.search_error = format!("{e}");
+                        return Action::SwitchMode(AppMode::Search);
+                    }
+                    Ok(regex) => regex,
+                };
+
+                self.active_pattern = Some(regex);
+                self.past_patterns.push(self.pattern.clone());
+                self.pattern.clear();
+                Action::SwitchMode(AppMode::Logs)
+            }
+            KeyCode::Esc => {
+                self.last_selected_pattern = None;
+                if self.pattern.is_empty() {
+                    Action::SwitchMode(AppMode::Logs)
+                } else {
+                    self.pattern.clear();
+                    Action::SwitchMode(AppMode::Search)
+                }
+            }
+            KeyCode::Char(c) => {
+                self.pattern.push(c);
+
+                Action::None
+            }
+            KeyCode::Backspace => {
+                if self.pattern.is_empty() {
+                    Action::SwitchMode(AppMode::Logs)
+                } else {
+                    self.pattern.pop();
+                    Action::None
+                }
+            }
+            KeyCode::Up => {
+                let index = self
+                    .last_selected_pattern
+                    .get_or_insert(self.past_patterns.len());
+
+                *index = (*index).saturating_sub(1);
+                if let Some(pattern) = self.past_patterns.get(*index) {
+                    self.pattern = pattern.clone();
+                }
+
+                Action::None
+            }
+            KeyCode::Down => {
+                let Some(index) = self.last_selected_pattern.as_mut() else {
+                    return Action::None;
+                };
+
+                *index = (*index).saturating_add(1);
+                if let Some(pattern) = self.past_patterns.get(*index) {
+                    self.pattern = pattern.clone();
+                }
+
+                Action::None
+            }
+            _ => Action::None,
+        }
     }
 }
