@@ -19,6 +19,7 @@ pub struct LogLine<'a> {
     pub level: LogLevel,
     pub marked: bool,
     pub comment: Option<String>,
+    pub out_of_order: bool,
 }
 
 impl PartialEq for LogLine<'_> {
@@ -65,7 +66,8 @@ impl<'a> LogLine<'a> {
     ///                      log: "2021-08-01T12:00:00Z INFO Hello, world!".into(),
     ///                      level: LogLevel::Unknown,
     ///                      marked: false,
-    ///                      comment: None
+    ///                      comment: None,
+    ///                      out_of_order: false,
     ///                    }
     ///           );
     /// // RFC2822 format
@@ -78,7 +80,8 @@ impl<'a> LogLine<'a> {
     ///                      log: "Wed, 18 Feb 2015 23:16:09 GMT ERROR Log contents".into(),
     ///                      level: LogLevel::Error,
     ///                      marked: false,
-    ///                      comment: None
+    ///                      comment: None,
+    ///                      out_of_order: false,
     ///                    }
     ///           );
     /// // Unknown time format
@@ -88,7 +91,8 @@ impl<'a> LogLine<'a> {
     ///                      log: "18/Mar/2003:08:05:30 +0200 Unknown format".into(),
     ///                      level: LogLevel::Unknown,
     ///                      marked: false,
-    ///                      comment: None
+    ///                      comment: None,
+    ///                      out_of_order: false,
     ///                    }
     ///           );
     ///
@@ -132,7 +136,12 @@ impl<'a> LogLine<'a> {
             level,
             marked: false,
             comment: None,
+            out_of_order: false,
         }
+    }
+
+    pub fn mark_as_out_of_order(&mut self) {
+        self.out_of_order = true;
     }
 }
 

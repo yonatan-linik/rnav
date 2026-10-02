@@ -1,5 +1,5 @@
-1996-12-19T16:39:57.2234-08:00 ERROR Test sub-second order
-1996-12-19T16:39:57.1234-08:00 WARN This is the log itself
+1995-12-19T16:39:57.2234-08:00 ERROR Test sub-second order
+2004-12-19T16:39:57.1234-08:00 WARN This is the log itself
 Tue, 1 Jul 2003 10:52:37 +0200 WARNING Second line and line
 18/Mar/2003:08:05:23 +0200 ERR Third line
 18/Mar/2003:08:05:24 +0200 Repeat this
